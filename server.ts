@@ -76,7 +76,7 @@ interface ApiResponse {
 // DATABASE CONNECTION
 // =============================================================================
 import mongoose from 'mongoose';
-import User from './models/User';
+import User from './models/User.js';
 
 const MONGO_URI = process.env.MONGO_URI || '';
 
