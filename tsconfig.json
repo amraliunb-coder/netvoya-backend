@@ -1,0 +1,23 @@
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node",
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "strict": true,
+        "outDir": "./dist",
+        "rootDir": "./",
+        "resolveJsonModule": true
+    },
+    "include": [
+        "*.ts"
+    ],
+    "exclude": [
+        "node_modules"
+    ],
+    "ts-node": {
+        "esm": true,
+        "experimentalSpecifierResolution": "node"
+    }
+}
