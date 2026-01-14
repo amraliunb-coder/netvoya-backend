@@ -33,4 +33,4 @@ const UserSchema: Schema = new Schema({
     timestamps: true // Automatically adds createdAt and updatedAt
 });
 
-export default mongoose.model<IUser>('User', UserSchema);
+export default mongoose.model<IUser>('User', UserSchema, 'users');
