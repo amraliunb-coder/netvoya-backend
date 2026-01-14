@@ -127,7 +127,9 @@ const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
-    'https://netvoya.vercel.app'
+    'https://netvoya.vercel.app',
+    'https://netvoya.com',
+    'https://www.netvoya.com'
 ];
 
 if (process.env.CORS_ORIGINS) {
