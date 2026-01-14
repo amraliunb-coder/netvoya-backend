@@ -95,9 +95,26 @@ const connectDB = async () => {
         console.log(`📡 Attempting to connect to: ${maskedURI}`);
 
         await mongoose.connect(MONGO_URI, {
-            serverSelectionTimeoutMS: 30000, // Increased to 30s for Vercel
-            socketTimeoutMS: 45000,
+            maxPoolSize: 10,           // Maximum connections in pool
+            minPoolSize: 2,            // Minimum connections to maintain
+            serverSelectionTimeoutMS: 10000,  // Reduced from 30s
+            socketTimeoutMS: 45000,    // Socket timeout
+            family: 4,                 // Force IPv4 (prevents IPv6 issues)
+            retryWrites: true,         // Auto-retry failed writes
+            w: 'majority'              // Write concern for data safety
         } as any);
+
+        mongoose.connection.on('connected', () => {
+            console.log('✅ MongoDB Connected - Pool Ready');
+        });
+
+        mongoose.connection.on('error', (err) => {
+            console.error('❌ MongoDB Error:', err);
+        });
+
+        mongoose.connection.on('disconnected', () => {
+            console.warn('⚠️ MongoDB Disconnected - Attempting Reconnection...');
+        });
 
         console.log('✅ Connected to MongoDB Atlas');
         mongoConnectionError = null; // Clear error on success
@@ -149,8 +166,20 @@ app.use(cors({
     credentials: true
 }));
 
-// Request Logger
+// Request Logger & Security Audit
 app.use((req: Request, res: Response, next: NextFunction) => {
+    // Log authentication attempts
+    if (req.path === '/api/auth/login' || req.path === '/api/login') {
+        console.log(JSON.stringify({
+            timestamp: new Date().toISOString(),
+            event: 'LOGIN_ATTEMPT',
+            ip: req.headers['x-forwarded-for'] || req.ip,
+            origin: req.get('origin'),
+            userAgent: req.get('user-agent')
+        }));
+    }
+
+    // General Access Log
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
     next();
 });
@@ -212,87 +241,9 @@ app.get('/api/health', async (req: Request, res: Response) => {
 });
 
 // 1.5 Debug Connection Endpoint
-import dns from 'dns';
-import net from 'net';
-import { promisify } from 'util';
 
-app.get('/api/debug-connection', async (req: Request, res: Response) => {
-    const host = 'ac-63lt4u9-shard-00-00.fxdecqe.mongodb.net';
-    const port = 27017;
-    const results: any = {
-        dns: null,
-        tcp: null,
-        message: ''
-    };
 
-    try {
-        // 1. Test DNS
-        try {
-            const lookup = promisify(dns.lookup);
-            const address = await lookup(host);
-            results.dns = { success: true, address };
-        } catch (err: any) {
-            results.dns = { success: false, error: err.message };
-        }
 
-        // 2. Test TCP
-        try {
-            await new Promise<void>((resolve, reject) => {
-                const socket = new net.Socket();
-                socket.setTimeout(3000); // 3s timeout
-                socket.on('connect', () => {
-                    socket.end();
-                    resolve();
-                });
-                socket.on('timeout', () => {
-                    socket.destroy();
-                    reject(new Error('Connection timed out'));
-                });
-                socket.on('error', (err) => {
-                    socket.destroy();
-                    reject(err);
-                });
-                socket.connect(port, host);
-            });
-            results.tcp = { success: true, message: 'Connected successfully' };
-        } catch (err: any) {
-            results.tcp = { success: false, error: err.message };
-        }
-
-        // 3. Test Mongoose (Full Connection)
-        try {
-            // Use createConnection to test a separate connection instance
-            const maskedURI = MONGO_URI.replace(/:([^:@]+)@/, ':****@');
-            const conn = mongoose.createConnection(MONGO_URI, { serverSelectionTimeoutMS: 5000 });
-
-            await new Promise<void>((resolve, reject) => {
-                conn.on('connected', () => {
-                    conn.close();
-                    resolve();
-                });
-                conn.on('error', (err) => {
-                    reject(err);
-                });
-                // Timeout fallback if event doesn't fire
-                setTimeout(() => reject(new Error('Mongoose connection timeout in debug')), 6000);
-            });
-            results.mongoose = { success: true, message: 'Mongoose connected successfully' };
-        } catch (err: any) {
-            results.mongoose = {
-                success: false,
-                error: err.message,
-                name: err.name,
-                reason: err.reason
-            };
-        }
-
-        results.message = 'Diagnostics complete';
-        res.json(results);
-
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
-});
 
 // 2. Register Endpoint
 app.post('/api/register', async (req: Request, res: Response) => {
