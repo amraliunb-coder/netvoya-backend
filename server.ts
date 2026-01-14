@@ -177,13 +177,35 @@ const generateToken = (user: any): string => { // User type now comes from Mongo
 // =============================================================================
 
 // 1. Health Check
-app.get('/api/health', (req: Request, res: Response) => {
-    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+app.get('/api/health', async (req: Request, res: Response) => {
+    let dbStatus = 'disconnected';
+    const state = mongoose.connection.readyState;
+    const states: { [key: number]: string } = {
+        0: 'disconnected',
+        1: 'connected',
+        2: 'connecting',
+        3: 'disconnecting',
+        99: 'uninitialized',
+    };
+
+    // Retry connection if completely disconnected
+    if (state === 0 || state === 99) {
+        console.log('🔄 Health check found DB disconnected. Retrying...');
+        connectDB(); // Fire and forget (don't await to avoid blocking)
+        dbStatus = 'retrying';
+    } else {
+        dbStatus = states[state] || 'unknown';
+    }
+
+    const maskedURI = MONGO_URI.replace(/:([^:@]+)@/, ':****@');
+
     res.json({
         status: 'ok',
         message: 'Server is running',
         database: dbStatus,
-        lastError: mongoConnectionError // Return the captured error
+        readyState: state, // 0=disconnected, 1=connected, 2=connecting
+        lastError: mongoConnectionError,
+        mongoUriUsed: maskedURI // Verify if user updated the Env Var correctly
     });
 });
 
