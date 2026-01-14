@@ -95,7 +95,7 @@ const connectDB = async () => {
         console.log(`📡 Attempting to connect to: ${maskedURI}`);
 
         await mongoose.connect(MONGO_URI, {
-            serverSelectionTimeoutMS: 5000, // Fail fast (5s instead of 30s)
+            serverSelectionTimeoutMS: 30000, // Increased to 30s for Vercel
             socketTimeoutMS: 45000,
         } as any);
 
@@ -255,6 +255,33 @@ app.get('/api/debug-connection', async (req: Request, res: Response) => {
             results.tcp = { success: true, message: 'Connected successfully' };
         } catch (err: any) {
             results.tcp = { success: false, error: err.message };
+        }
+
+        // 3. Test Mongoose (Full Connection)
+        try {
+            // Use createConnection to test a separate connection instance
+            const maskedURI = MONGO_URI.replace(/:([^:@]+)@/, ':****@');
+            const conn = mongoose.createConnection(MONGO_URI, { serverSelectionTimeoutMS: 5000 });
+
+            await new Promise<void>((resolve, reject) => {
+                conn.on('connected', () => {
+                    conn.close();
+                    resolve();
+                });
+                conn.on('error', (err) => {
+                    reject(err);
+                });
+                // Timeout fallback if event doesn't fire
+                setTimeout(() => reject(new Error('Mongoose connection timeout in debug')), 6000);
+            });
+            results.mongoose = { success: true, message: 'Mongoose connected successfully' };
+        } catch (err: any) {
+            results.mongoose = {
+                success: false,
+                error: err.message,
+                name: err.name,
+                reason: err.reason
+            };
         }
 
         results.message = 'Diagnostics complete';
