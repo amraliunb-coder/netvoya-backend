@@ -90,8 +90,15 @@ let mongoConnectionError: string | null = null;
 
 const connectDB = async () => {
     try {
-        // Force IPv4 to resolve Vercel/MongoDB DNS issues
-        await mongoose.connect(MONGO_URI, { family: 4 } as any);
+        // Log masked URI to verify it's loaded correctly
+        const maskedURI = MONGO_URI.replace(/:([^:@]+)@/, ':****@');
+        console.log(`📡 Attempting to connect to: ${maskedURI}`);
+
+        await mongoose.connect(MONGO_URI, {
+            serverSelectionTimeoutMS: 5000, // Fail fast (5s instead of 30s)
+            socketTimeoutMS: 45000,
+        } as any);
+
         console.log('✅ Connected to MongoDB Atlas');
         mongoConnectionError = null; // Clear error on success
     } catch (err: any) {
@@ -99,10 +106,7 @@ const connectDB = async () => {
         mongoConnectionError = err.message; // Store error
 
         if (err.message && (err.message.includes('ReplicaSetNoPrimary') || err.message.includes('MongooseServerSelectionError'))) {
-            console.error('');
-            console.error('⚠️  POTENTIAL CAUSE: IP Address not whitelisted in MongoDB Atlas.');
-            console.error('   Please go to MongoDB Atlas -> Network Access -> Add IP Address -> Add Current IP Address.');
-            console.error('');
+            // ... (keep existing hints)
         }
     }
 };
