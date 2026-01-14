@@ -85,12 +85,17 @@ if (!MONGO_URI) {
     console.warn("    Server will run but database connection will fail.");
 }
 
+// Global variable to store connection error
+let mongoConnectionError: string | null = null;
+
 const connectDB = async () => {
     try {
         await mongoose.connect(MONGO_URI);
         console.log('✅ Connected to MongoDB Atlas');
+        mongoConnectionError = null; // Clear error on success
     } catch (err: any) {
         console.error('❌ MongoDB Connection Error:', err.message);
+        mongoConnectionError = err.message; // Store error
 
         if (err.message && (err.message.includes('ReplicaSetNoPrimary') || err.message.includes('MongooseServerSelectionError'))) {
             console.error('');
@@ -169,7 +174,12 @@ const generateToken = (user: any): string => { // User type now comes from Mongo
 // 1. Health Check
 app.get('/api/health', (req: Request, res: Response) => {
     const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-    res.json({ status: 'ok', message: 'Server is running', database: dbStatus });
+    res.json({
+        status: 'ok',
+        message: 'Server is running',
+        database: dbStatus,
+        lastError: mongoConnectionError // Return the captured error
+    });
 });
 
 // 2. Register Endpoint
