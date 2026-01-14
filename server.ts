@@ -78,7 +78,8 @@ interface ApiResponse {
 import mongoose from 'mongoose';
 import User from './models/User.js';
 
-const MONGO_URI = process.env.MONGO_URI || '';
+// Prioritize the MongoDB integration's variable, fallback to manual MONGO_URI
+const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || '';
 
 if (!MONGO_URI) {
     console.warn("⚠️  WARNING: MONGO_URI is not defined in .env file.");
