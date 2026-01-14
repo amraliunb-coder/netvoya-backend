@@ -90,7 +90,8 @@ let mongoConnectionError: string | null = null;
 
 const connectDB = async () => {
     try {
-        await mongoose.connect(MONGO_URI);
+        // Force IPv4 to resolve Vercel/MongoDB DNS issues
+        await mongoose.connect(MONGO_URI, { family: 4 } as any);
         console.log('✅ Connected to MongoDB Atlas');
         mongoConnectionError = null; // Clear error on success
     } catch (err: any) {
