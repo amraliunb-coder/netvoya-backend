@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import EsimProductMapping from './models/EsimProductMapping.js';
-import esimVendorService from './services/esimVendorService.js';
+import EsimProductMapping from '../models/EsimProductMapping.js';
+import esimVendorService from '../services/esimVendorService.js';
 
 dotenv.config();
 

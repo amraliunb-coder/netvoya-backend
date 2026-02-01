@@ -78,6 +78,8 @@ interface ApiResponse {
 import mongoose from 'mongoose';
 import User from './models/User.js';
 import EsimProductMapping from './models/EsimProductMapping.js';
+import InventoryBucket from './models/InventoryBucket.js';
+import EsimProfile from './models/EsimProfile.js';
 import esimVendorService from './services/esimVendorService.js';
 
 // Prioritize the MongoDB integration's variable, fallback to manual MONGO_URI
@@ -490,6 +492,126 @@ app.post('/api/orders/esim', async (_req: Request, res: Response) => {
 
         // Proceed with order...
         res.json({ success: true, message: 'Order simulation successful.' });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 12. Get Partner Inventory (Buckets)
+app.get('/api/inventory', async (req: Request, res: Response) => {
+    try {
+        // In a real app, this would be filtered by the logged-in user's ID from JWT
+        // For demo, we'll return all buckets if a partner_id is provided or just all
+        const partner_id = req.query.partner_id;
+        const query = partner_id ? { partner_id } : {};
+        const buckets = await InventoryBucket.find(query);
+        res.json({ success: true, buckets });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 13. Assign eSIM from Bucket
+app.post('/api/inventory/:bucketId/assign', async (req: Request, res: Response) => {
+    try {
+        const { bucketId } = req.params;
+        const { name, email } = req.body;
+
+        if (!name || !email) {
+            return res.status(400).json({ success: false, message: 'Name and email are required.' });
+        }
+
+        // Find an available profile in this bucket
+        const profile = await EsimProfile.findOneAndUpdate(
+            { bucket_id: bucketId, status: 'Available' },
+            {
+                status: 'Assigned',
+                assigned_to_name: name,
+                assigned_to_email: email,
+                assignment_date: new Date()
+            },
+            { new: true }
+        );
+
+        if (!profile) {
+            return res.status(404).json({ success: false, message: 'No available eSIMs in this bucket.' });
+        }
+
+        // Update bucket counts
+        await InventoryBucket.findByIdAndUpdate(bucketId, {
+            $inc: { assigned_count: 1, available_count: -1 }
+        });
+
+        // Mock sending email
+        console.log(`📧 Sending automated email to ${email} with QR Code for ICCID: ${profile.iccid}`);
+
+        res.json({
+            success: true,
+            message: `Successfully assigned eSIM to ${name}.`,
+            profile
+        });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 14. Bulk Download QR Codes (Mock)
+app.get('/api/inventory/:bucketId/download', async (req: Request, res: Response) => {
+    try {
+        const { bucketId } = req.params;
+        const bucket = await InventoryBucket.findById(bucketId);
+
+        if (!bucket) {
+            return res.status(404).json({ success: false, message: 'Bucket not found.' });
+        }
+
+        // Simulating zip generation
+        res.json({
+            success: true,
+            message: `Pre-generating ZIP for ${bucket.package_name}...`,
+            download_url: `/api/mock-download/${bucketId}.zip`
+        });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 15. Seed Test Inventory (Internal Tool)
+app.post('/api/test/seed-inventory', async (req: Request, res: Response) => {
+    try {
+        const { partnerId } = req.body;
+        if (!partnerId) return res.status(400).send('partnerId required');
+
+        const packages = await EsimProductMapping.find({ is_live: true });
+
+        for (const pkg of packages) {
+            const bucket = await InventoryBucket.create({
+                partner_id: partnerId,
+                package_id: pkg._id,
+                package_name: pkg.name,
+                region: pkg.region,
+                data_limit_gb: pkg.data_limit_gb,
+                duration_days: pkg.duration_days,
+                total_purchased: 50,
+                assigned_count: 0,
+                available_count: 50
+            });
+
+            // Create 50 profiles for this bucket
+            const profiles = [];
+            for (let i = 0; i < 50; i++) {
+                profiles.push({
+                    bucket_id: bucket._id,
+                    iccid: `89000${Math.random().toString().slice(2, 12)}`,
+                    activation_code: `ACT-${Math.random().toString(36).substring(7).toUpperCase()}`,
+                    qr_code_url: 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=NetVoya-eSIM-Test',
+                    status: 'Available'
+                });
+            }
+            await EsimProfile.insertMany(profiles);
+        }
+
+        res.json({ success: true, message: 'Seeded inventory for packages.' });
     } catch (error: any) {
         res.status(500).json({ success: false, message: error.message });
     }
