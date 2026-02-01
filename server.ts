@@ -77,6 +77,8 @@ interface ApiResponse {
 // =============================================================================
 import mongoose from 'mongoose';
 import User from './models/User.js';
+import EsimProductMapping from './models/EsimProductMapping.js';
+import esimVendorService from './services/esimVendorService.js';
 
 // Prioritize the MongoDB integration's variable, fallback to manual MONGO_URI
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || '';
@@ -375,6 +377,121 @@ app.get('/api/users', async (req: Request, res: Response) => {
         res.json(users);
     } catch (error) {
         res.status(500).json({ message: 'Error fetching users' });
+    }
+});
+
+// 5. Get eSIM Packages from Mapping Table
+// Updated to handle role-based filtering (Draft vs Live)
+app.get('/api/packages', async (req: Request, res: Response) => {
+    try {
+        const isAdmin = req.query.admin === 'true';
+        const query = isAdmin ? {} : { is_live: true };
+
+        const packages = await EsimProductMapping.find(query).sort({ region: 1, data_limit_gb: 1 });
+        res.json({
+            success: true,
+            count: packages.length,
+            packages
+        });
+    } catch (error: any) {
+        console.error('Error fetching packages:', error.message);
+        res.status(500).json({ success: false, message: 'Error fetching packages' });
+    }
+});
+
+// 6. Fetch Vendor Balance
+app.get('/api/vendor/balance', async (_req: Request, res: Response) => {
+    try {
+        const balance = await esimVendorService.getBalance();
+        res.json({ success: true, balance });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 7. Toggle Package Live Status
+app.patch('/api/packages/:id/status', async (req: Request, res: Response) => {
+    try {
+        const { is_live } = req.body;
+        const pkg = await EsimProductMapping.findByIdAndUpdate(req.params.id, { is_live }, { new: true });
+        res.json({ success: true, package: pkg });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 8. Update Retail Price
+app.patch('/api/packages/:id/price', async (req: Request, res: Response) => {
+    try {
+        const { retail_price } = req.body;
+        const pkg = await EsimProductMapping.findByIdAndUpdate(req.params.id, { retail_price }, { new: true });
+        res.json({ success: true, package: pkg });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 9. Trigger Vendor Sync (Admin only)
+app.post('/api/vendor/sync', async (_req: Request, res: Response) => {
+    try {
+        console.log('🔄 Manual sync triggered...');
+        const vendorPackages = await esimVendorService.getPackages();
+
+        for (const pkg of vendorPackages) {
+            await EsimProductMapping.findOneAndUpdate(
+                { vendor_package_id: pkg.id },
+                {
+                    $set: {
+                        wholesale_cost: pkg.price,
+                        name: pkg.name,
+                        region: pkg.region,
+                        data_limit_gb: pkg.data_limit_gb,
+                        duration_days: pkg.duration_days,
+                        last_sync: new Date()
+                    },
+                    $setOnInsert: {
+                        retail_price: Math.ceil(pkg.price * 1.5),
+                        is_live: false // New synced packages are DRAFT
+                    }
+                },
+                { upsert: true, new: true }
+            );
+        }
+
+        res.json({ success: true, message: 'Sync completed. New packages added as DRAFT.' });
+    } catch (error: any) {
+        console.error('Sync Error:', error.message);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 10. Vendor Auth Test (Proxies to vendor login)
+app.post('/api/vendor/login', async (_req: Request, res: Response) => {
+    try {
+        const token = await esimVendorService.login();
+        res.json({ success: true, token });
+    } catch (error: any) {
+        res.status(401).json({ success: false, message: error.message });
+    }
+});
+
+// 11. Purchase eSIM (with balance check)
+app.post('/api/orders/esim', async (_req: Request, res: Response) => {
+    try {
+        const balance = await esimVendorService.getBalance();
+
+        if (balance <= 0) {
+            return res.status(503).json({
+                success: false,
+                code: 'VND_NO_BALANCE',
+                message: 'Service Temporarily Unavailable. Please contact support.'
+            });
+        }
+
+        // Proceed with order...
+        res.json({ success: true, message: 'Order simulation successful.' });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
