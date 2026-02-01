@@ -422,6 +422,16 @@ app.patch('/api/packages/:id/status', async (req: Request, res: Response) => {
     }
 });
 
+// 7.5 Activate ALL Packages (Set all to Live)
+app.post('/api/packages/activate-all', async (_req: Request, res: Response) => {
+    try {
+        const result = await EsimProductMapping.updateMany({}, { $set: { is_live: true } });
+        res.json({ success: true, message: `Activated ${result.modifiedCount} packages.`, modifiedCount: result.modifiedCount });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // 8. Update Retail Price
 app.patch('/api/packages/:id/price', async (req: Request, res: Response) => {
     try {
