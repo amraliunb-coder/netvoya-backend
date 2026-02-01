@@ -9,6 +9,7 @@ export interface IEsimProductMapping extends Document {
     data_limit_gb: number;
     duration_days: number;
     last_sync: Date;
+    is_live: boolean;
 }
 
 const EsimProductMappingSchema: Schema = new Schema({
@@ -19,6 +20,7 @@ const EsimProductMappingSchema: Schema = new Schema({
     region: { type: String, required: true },
     data_limit_gb: { type: Number, required: true },
     duration_days: { type: Number, required: true },
+    is_live: { type: Boolean, default: false },
     last_sync: { type: Date, default: Date.now },
 }, {
     timestamps: true
