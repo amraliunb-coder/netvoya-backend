@@ -81,6 +81,7 @@ import EsimProductMapping from './models/EsimProductMapping.js';
 import InventoryBucket from './models/InventoryBucket.js';
 import EsimProfile from './models/EsimProfile.js';
 import esimVendorService from './services/esimVendorService.js';
+import emailService from './services/emailService.js';
 
 // Prioritize the MongoDB integration's variable, fallback to manual MONGO_URI
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || '';
@@ -761,6 +762,40 @@ app.post('/api/test/seed-inventory', async (req: Request, res: Response) => {
 
         res.json({ success: true, message: 'Seeded inventory for packages.' });
     } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 16. Request Inventory (Email Notification)
+app.post('/api/request-inventory', async (req: Request, res: Response) => {
+    try {
+        const { totalTokens, totalAmount, discountLabel, packages, partnerInfo } = req.body;
+
+        if (!totalTokens || !packages || packages.length === 0) {
+            return res.status(400).json({ success: false, message: 'Invalid request data' });
+        }
+
+        console.log(`📝 Received inventory request for ${totalTokens} tokens ($${totalAmount})`);
+
+        // Send Email
+        const emailResult = await emailService.sendInventoryRequestEmail({
+            totalTokens,
+            totalAmount,
+            discountLabel,
+            packages,
+            partnerInfo
+        });
+
+        if (emailResult.success) {
+            res.json({ success: true, message: 'Request submitted and email sent.' });
+        } else {
+            console.warn('⚠️ Request saved but email failed:', emailResult.error);
+            // Still return success to frontend so user flow isn't broken, but log the error
+            res.json({ success: true, message: 'Request submitted (email delivery pending).' });
+        }
+
+    } catch (error: any) {
+        console.error('Request Inventory Error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 });

@@ -67,7 +67,7 @@ class EsimVendorService extends EventEmitter {
             this.tokenExpiry = new Date(Date.now() + 23 * 60 * 60 * 1000);
 
             console.log('✅ Vendor Login Successful');
-            return this.token;
+            return this.token as string;
         } catch (error: any) {
             console.error('❌ Vendor Login Error:', error.response?.data || error.message);
             throw error;
@@ -81,7 +81,7 @@ class EsimVendorService extends EventEmitter {
         if (!this.token) {
             return await this.login();
         }
-        return this.token;
+        return this.token as string;
     }
 
     /**
@@ -137,6 +137,9 @@ class EsimVendorService extends EventEmitter {
                         throw error;
                     }
                 }
+
+                // Rate limiting to avoid 429
+                await new Promise(resolve => setTimeout(resolve, 3000));
             }
 
             console.log(`✅ Fetched ${allPackages.length} packages total.`);
