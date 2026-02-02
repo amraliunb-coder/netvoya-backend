@@ -1,101 +1,176 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
+import { EventEmitter } from 'events';
 
 dotenv.config();
 
-const API_BASE_URL = 'https://api.esimcard.com/v1'; // Placeholder URL
+// Configuration
+const API_BASE_URL = 'https://portal.esimcard.com/api/developer/reseller';
+const VENDOR_EMAIL = process.env.ESIM_VENDOR_EMAIL || 'dealer123@gmail.com';
+const VENDOR_PASSWORD = process.env.ESIM_VENDOR_PASSWORD || 'testUser123';
 
 export interface VendorAuthResponse {
-    token: string;
-    expires_at: string;
+    access_token: string;
+    // Add other fields if returned
 }
 
 export interface VendorPackage {
-    id: string;
-    name: string;
-    region: string;
-    data_limit_gb: number;
-    duration_days: number;
-    price: number;
+    slug: string;
+    location_name: string;
+    amount: number;
+    duration: number;
+    duration_unit: string;
+    price_retail: number;
+    price_wholesale: number;
 }
 
-class EsimVendorService {
+export interface VendorPricing {
+    // Define structure based on API response
+    [key: string]: any;
+}
+
+class EsimVendorService extends EventEmitter {
     private token: string | null = null;
+    private tokenExpiry: Date | null = null;
+
+    constructor() {
+        super();
+    }
 
     /**
      * Authenticate with the eSIMCard.com API
      */
     async login(): Promise<string> {
-        const email = process.env.ESIM_CARD_VENDOR_EMAIL;
-        const password = process.env.ESIM_CARD_VENDOR_PASSWORD;
+        if (this.token && this.tokenExpiry && this.tokenExpiry > new Date()) {
+            return this.token;
+        }
 
-        // if (!email || !password || email.includes('example.com')) {
-        //     throw new Error('Vendor credentials not configured or using placeholders.');
-        // }
+        console.log('📡 Authenticating with eSIM Vendor API...');
 
         try {
-            // Real implementation would call something like:
-            // const response = await axios.post(`${API_BASE_URL}/login`, { email, password });
-            // this.token = response.data.token;
+            const response = await axios.post(`${API_BASE_URL}/login`, {
+                email: VENDOR_EMAIL,
+                password: VENDOR_PASSWORD
+            });
 
-            console.log('📡 Mocking login for eSIMCard.com API...');
-            this.token = 'mock-vendor-token-' + Date.now();
+            // Assuming `access_token` is in response.data or response.data.access_token
+            // Adjust based on actual response structure
+            const accessToken = response.data?.access_token || response.data?.token;
+
+            if (!accessToken) {
+                console.error('Login Response:', response.data);
+                throw new Error('No access token received from vendor login.');
+            }
+
+            this.token = accessToken;
+            // Set expiry to 24h from now (or parse from token if JWT)
+            this.tokenExpiry = new Date(Date.now() + 23 * 60 * 60 * 1000);
+
+            console.log('✅ Vendor Login Successful');
             return this.token;
         } catch (error: any) {
-            console.error('❌ Vendor Login Error:', error.message);
+            console.error('❌ Vendor Login Error:', error.response?.data || error.message);
             throw error;
         }
     }
 
     /**
-     * Fetch all available packages from the vendor
+     * Get validated token for requests
      */
-    async getPackages(): Promise<VendorPackage[]> {
+    private async getToken(): Promise<string> {
         if (!this.token) {
-            await this.login();
+            return await this.login();
         }
+        return this.token;
+    }
+
+    /**
+     * Fetch all available packages
+     */
+    async getPackages(): Promise<any[]> {
+        const token = await this.getToken();
+        console.log('📡 Fetching ALL vendor packages...');
+
+        let allPackages: any[] = [];
+        let page = 1;
+        let hasMore = true;
 
         try {
-            // Real implementation:
-            // const response = await axios.get(`${API_BASE_URL}/packages`, {
-            //   headers: { Authorization: `Bearer ${this.token}` }
-            // });
-            // return response.data.packages;
+            while (hasMore) {
+                try {
+                    console.log(`   Fetching page ${page}...`);
+                    const response = await axios.get(`${API_BASE_URL}/packages?page=${page}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
 
-            console.log('📡 Mocking package fetch from eSIMCard.com API...');
-            return [
-                { id: 'pkg_1', name: 'Global 1GB', region: 'Global', data_limit_gb: 1, duration_days: 7, price: 5.00 },
-                { id: 'pkg_2', name: 'Europe 5GB', region: 'Europe', data_limit_gb: 5, duration_days: 30, price: 12.00 },
-                { id: 'pkg_3', name: 'USA 10GB', region: 'USA', data_limit_gb: 10, duration_days: 30, price: 20.00 }
-            ];
+                    // Extract data
+                    const data = response.data?.data || [];
+                    allPackages = allPackages.concat(data);
+
+                    // Check pagination keys (camelCase)
+                    const meta = response.data?.meta;
+                    if (meta && meta.currentPage < meta.lastPage) {
+                        page++;
+                    } else {
+                        hasMore = false;
+                    }
+                } catch (error: any) {
+                    // Retry once on 401
+                    if (error.response?.status === 401) {
+                        console.log(`🔄 Token expired at page ${page}, re-login...`);
+                        this.token = null;
+                        const newToken = await this.getToken();
+                        // Retry current page
+                        const retryResponse = await axios.get(`${API_BASE_URL}/packages?page=${page}`, {
+                            headers: { 'Authorization': `Bearer ${newToken}` }
+                        });
+                        const data = retryResponse.data?.data || [];
+                        allPackages = allPackages.concat(data);
+
+                        const meta = retryResponse.data?.meta;
+                        if (meta && meta.currentPage < meta.lastPage) {
+                            page++;
+                        } else {
+                            hasMore = false;
+                        }
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+
+            console.log(`✅ Fetched ${allPackages.length} packages total.`);
+            return allPackages;
         } catch (error: any) {
-            console.error('❌ Vendor Fetch Packages Error:', error.message);
+            console.error('❌ Vendor Valid Packages Error:', error.message);
             throw error;
         }
     }
 
     /**
-     * Fetch current balance from the vendor
+     * Fetch pricing information
+     */
+    async getPricing(): Promise<any> {
+        const token = await this.getToken();
+        console.log('📡 Fetching vendor pricing...');
+
+        try {
+            const response = await axios.get(`${API_BASE_URL}/pricing`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            return response.data;
+        } catch (error: any) {
+            console.error('❌ Vendor Pricing Error:', error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Fetch balance
      */
     async getBalance(): Promise<number> {
-        if (!this.token) {
-            await this.login();
-        }
-
-        try {
-            // Real implementation:
-            // const response = await axios.get(`${API_BASE_URL}/balance`, {
-            //   headers: { Authorization: `Bearer ${this.token}` }
-            // });
-            // return response.data.balance;
-
-            console.log('📡 Mocking balance fetch from eSIMCard.com API...');
-            // Simulate real-time balance for testing ($8 to trigger warning)
-            return 8.50;
-        } catch (error: any) {
-            console.error('❌ Vendor Fetch Balance Error:', error.message);
-            throw error;
-        }
+        // Placeholder until endpoint is known
+        return 0;
     }
 }
 

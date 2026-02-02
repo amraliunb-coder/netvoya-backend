@@ -19,37 +19,61 @@ async function syncPackages() {
         console.log('✅ Connected to MongoDB');
 
         const vendorPackages = await esimVendorService.getPackages();
-        console.log(`📦 Fetched ${vendorPackages.length} packages from vendor`);
+        // Console log already in service
+
+        let inserted = 0;
+        let updated = 0;
 
         for (const pkg of vendorPackages) {
-            const existingMapping = await EsimProductMapping.findOne({ vendor_package_id: pkg.id });
+            // Extract region from coverage if available
+            const region = (pkg.coverage && pkg.coverage.length > 0) ? pkg.coverage[0].country_name : 'Global';
+
+            // 1. Try to find by ID
+            let existingMapping = await EsimProductMapping.findOne({ vendor_package_id: pkg.id });
+
+            // 2. Fallback: Try to find by Name (to merge seeded data)
+            if (!existingMapping) {
+                existingMapping = await EsimProductMapping.findOne({ name: pkg.name });
+                if (existingMapping) {
+                    console.log(`🔗 Merging seeded package '${pkg.name}' (Old ID: ${existingMapping.vendor_package_id}) -> New ID: ${pkg.id}`);
+                    // Update the ID to the real one
+                    existingMapping.vendor_package_id = pkg.id;
+                }
+            }
 
             if (existingMapping) {
-                // Update wholesale cost but keep our retail price & status
+                // Update key fields
                 existingMapping.wholesale_cost = pkg.price;
                 existingMapping.name = pkg.name;
-                existingMapping.region = pkg.region;
-                existingMapping.data_limit_gb = pkg.data_limit_gb;
-                existingMapping.duration_days = pkg.duration_days;
+                existingMapping.region = region;
+                // existingMapping.data_limit_gb = pkg.data_quantity; 
+                // data_quantity is sometimes string/number, safe cast?
+                existingMapping.data_limit_gb = pkg.data_quantity;
+                existingMapping.duration_days = pkg.package_validity;
                 existingMapping.last_sync = new Date();
                 await existingMapping.save();
-                console.log(`✅ Updated: ${pkg.name} (${pkg.id})`);
+                updated++;
             } else {
-                // New package - set a default retail price and mark as DRAFT
+                // Create new draft mapping
                 const newMapping = new EsimProductMapping({
                     vendor_package_id: pkg.id,
-                    retail_price: Math.ceil(pkg.price * 1.5), // 50% markup default
+                    retail_price: Number((pkg.price * 1.5).toFixed(2)), // 50% markup
                     wholesale_cost: pkg.price,
                     name: pkg.name,
-                    region: pkg.region,
-                    data_limit_gb: pkg.data_limit_gb,
-                    duration_days: pkg.duration_days,
-                    is_live: false // Default to Draft
+                    region: region,
+                    data_limit_gb: pkg.data_quantity,
+                    duration_days: pkg.package_validity,
+                    is_live: false, // Default to Draft
+                    last_sync: new Date()
                 });
                 await newMapping.save();
-                console.log(`✨ Created DRAFT: ${pkg.name} (${pkg.id})`);
+                inserted++;
             }
         }
+
+        console.log(`\n✅ Sync Complete!`);
+        console.log(`   📦 Inserted: ${inserted} new packages`);
+        console.log(`   🔄 Updated: ${updated} existing packages`);
 
         console.log('🎉 Sync completed successfully!');
         process.exit(0);

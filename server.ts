@@ -559,29 +559,56 @@ app.post('/api/vendor/sync', async (_req: Request, res: Response) => {
     try {
         console.log('🔄 Manual sync triggered...');
         const vendorPackages = await esimVendorService.getPackages();
+        console.log(`📦 Fetched ${vendorPackages.length} packages from vendor`);
+
+        let updated = 0;
+        let inserted = 0;
 
         for (const pkg of vendorPackages) {
-            await EsimProductMapping.findOneAndUpdate(
-                { vendor_package_id: pkg.id },
-                {
-                    $set: {
-                        wholesale_cost: pkg.price,
-                        name: pkg.name,
-                        region: pkg.region,
-                        data_limit_gb: pkg.data_limit_gb,
-                        duration_days: pkg.duration_days,
-                        last_sync: new Date()
-                    },
-                    $setOnInsert: {
-                        retail_price: Math.ceil(pkg.price * 1.5),
-                        is_live: false // New synced packages are DRAFT
-                    }
-                },
-                { upsert: true, new: true }
-            );
+            const region = (pkg.coverage && pkg.coverage.length > 0) ? pkg.coverage[0].country_name : 'Global';
+
+            // 1. Try to find by ID
+            let existing = await EsimProductMapping.findOne({ vendor_package_id: pkg.id });
+
+            // 2. Fallback: Try to find by Name (to merge seeded data)
+            if (!existing) {
+                existing = await EsimProductMapping.findOne({ name: pkg.name });
+                if (existing) {
+                    console.log(`🔗 Merging seeded package '${pkg.name}' (Old ID: ${existing.vendor_package_id}) -> New ID: ${pkg.id}`);
+                    existing.vendor_package_id = pkg.id;
+                }
+            }
+
+            if (existing) {
+                existing.wholesale_cost = pkg.price;
+                existing.name = pkg.name;
+                existing.region = region;
+                existing.data_limit_gb = pkg.data_quantity;
+                existing.duration_days = pkg.package_validity;
+                existing.last_sync = new Date();
+                await existing.save();
+                updated++;
+            } else {
+                await EsimProductMapping.create({
+                    vendor_package_id: pkg.id,
+                    retail_price: Number((pkg.price * 1.5).toFixed(2)),
+                    wholesale_cost: pkg.price,
+                    name: pkg.name,
+                    region: region,
+                    data_limit_gb: pkg.data_quantity,
+                    duration_days: pkg.package_validity,
+                    is_live: false, // New synced packages are DRAFT
+                    last_sync: new Date()
+                });
+                inserted++;
+            }
         }
 
-        res.json({ success: true, message: 'Sync completed. New packages added as DRAFT.' });
+        res.json({
+            success: true,
+            message: `Sync completed. Updated: ${updated}, Inserted: ${inserted}.`,
+            stats: { updated, inserted }
+        });
     } catch (error: any) {
         console.error('Sync Error:', error.message);
         res.status(500).json({ success: false, message: error.message });
