@@ -814,10 +814,12 @@ app.post('/api/inventory/:bucketId/assign', async (req: Request, res: Response) 
             return res.status(404).json({ success: false, message: 'No available eSIMs in this bucket.' });
         }
 
-        // Update bucket counts
-        await InventoryBucket.findByIdAndUpdate(bucketId, {
+        // Update bucket counts and get details
+        const bucket = await InventoryBucket.findByIdAndUpdate(bucketId, {
             $inc: { assigned_count: 1, available_count: -1 }
-        });
+        }, { new: true });
+
+        if (!bucket) throw new Error('Bucket not found');
 
         // Send Email to User
         console.log(`📧 Sending automated email to ${email} with QR Code for ICCID: ${profile.iccid}`);
