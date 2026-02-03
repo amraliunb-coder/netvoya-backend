@@ -646,6 +646,77 @@ app.post('/api/orders/esim', async (_req: Request, res: Response) => {
     }
 });
 
+// 11.5 Admin: Get All Profiles
+app.get('/api/admin/profiles', async (req: Request, res: Response) => {
+    try {
+        // In real app: verify admin role via middleware
+        const profiles = await EsimProfile.find().sort({ createdAt: -1 });
+
+        // Enrich with package name from bucket if possible
+        // For performance, we'll just return profiles first. 
+        // A robust solution would .populate('bucket_id')
+
+        res.json({ success: true, profiles });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 11.6 Admin: Manual Issue eSIM
+app.post('/api/admin/issue-esim', async (req: Request, res: Response) => {
+    try {
+        const { partnerId, packageId, iccid, activationCode, qrCodeUrl } = req.body;
+
+        if (!partnerId || !packageId || !iccid || !activationCode) {
+            return res.status(400).json({ success: false, message: 'Missing required fields' });
+        }
+
+        // 1. Get Package Details
+        const pkg = await EsimProductMapping.findById(packageId);
+        if (!pkg) return res.status(404).json({ success: false, message: 'Package not found' });
+
+        // 2. Find or Create InventoryBucket
+        let bucket = await InventoryBucket.findOne({ partner_id: partnerId, package_id: packageId });
+
+        if (!bucket) {
+            bucket = new InventoryBucket({
+                partner_id: partnerId,
+                package_id: packageId,
+                package_name: pkg.name,
+                region: pkg.region,
+                data_limit_gb: pkg.data_limit_gb,
+                duration_days: pkg.duration_days,
+                total_purchased: 0,
+                assigned_count: 0,
+                available_count: 0
+            });
+        }
+
+        // 3. Create eSIM Profile linked to this bucket
+        const qrUrlFinal = qrCodeUrl || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${activationCode}`;
+
+        const newProfile = new EsimProfile({
+            bucket_id: bucket._id,
+            iccid,
+            activation_code: activationCode,
+            qr_code_url: qrUrlFinal,
+            status: 'Available' // Available for the PARTNER to assign
+        });
+        await newProfile.save();
+
+        // 4. Update Bucket Counts
+        bucket.total_purchased += 1;
+        bucket.available_count += 1;
+        await bucket.save();
+
+        res.json({ success: true, message: 'eSIM issued successfully to partner inventory.', profile: newProfile });
+
+    } catch (error: any) {
+        console.error('Issue Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // 12. Get Partner Inventory (Buckets)
 app.get('/api/inventory', async (req: Request, res: Response) => {
     try {
