@@ -198,14 +198,14 @@ class EsimVendorService extends EventEmitter {
             },
             '8910300000049564873': {
                 status: 'Active',
-                product_name: 'UK 3GB', // Placeholder
-                package_label: '3GB Data For 30Day in United Kingdom, 5G',
+                product_name: 'Egypt 1GB',
+                package_label: '1GB Data For 7Day in Egypt, Unthrottled',
                 iccid: '8910300000049564873',
                 smp_address: 'consumer.e-sim.global',
-                activation_code: 'LPA:1$consumer.e-sim.global$UK3GBDEMO123',
+                activation_code: 'LPA:1$consumer.e-sim.global$EGYPT1GBDEMO02',
                 balance: {
-                    initial_data: '3 GB',
-                    remaining_data: '3 GB',
+                    initial_data: '1 GB',
+                    remaining_data: '1 GB',
                     expiration_date: '2026-03-03'
                 },
                 purchase_date: '2026-02-03 11:05:00'
