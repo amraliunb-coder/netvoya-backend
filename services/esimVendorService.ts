@@ -180,6 +180,31 @@ class EsimVendorService extends EventEmitter {
      * Fetch eSIM details by ICCID from the order/inventory endpoint
      */
     async getEsimDetailsByIccid(iccid: string): Promise<any> {
+        // DEMO BYPASS: Specific ICCIDs for Client Simulation
+        const DEMO_ICCIDS: Record<string, any> = {
+            '8910300000049564025': {
+                status: 'Active',
+                product_name: 'Egypt 1GB',
+                package_label: '1GB Data For 7Day in Egypt, Unthrottled',
+                iccid: '8910300000049564025',
+                smp_address: 'consumer.e-sim.global',
+                activation_code: 'LPA:1$consumer.e-sim.global$D56C93C55620D235', // Mock activation code
+                balance: {
+                    initial_data: '1 GB',
+                    remaining_data: '1 GB',
+                    expiration_date: '2026-03-03'
+                },
+                purchase_date: '2026-02-03 10:58:00'
+            }
+        };
+
+        if (DEMO_ICCIDS[iccid]) {
+            console.log(`⚠️ DEMO MODE: Returning mock data for ICCID ${iccid}`);
+            // Simulate API delay
+            await new Promise(resolve => setTimeout(resolve, 800));
+            return DEMO_ICCIDS[iccid];
+        }
+
         const token = await this.getToken();
         console.log(`📡 Fetching details for ICCID: ${iccid}...`);
 
