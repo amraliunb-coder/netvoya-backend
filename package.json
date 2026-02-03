@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "nodemon --exec ts-node --esm --experimental-specifier-resolution=node server.ts",
+    "dev": "nodemon --exec \"node --loader ts-node/esm --experimental-specifier-resolution=node\" server.ts",
     "start": "ts-node --esm server.ts",
     "test:esim": "ts-node --esm --experimental-specifier-resolution=node test-esim.ts"
   },
