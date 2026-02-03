@@ -646,6 +646,29 @@ app.post('/api/orders/esim', async (_req: Request, res: Response) => {
     }
 });
 
+// 11.5.1 Admin: Verify ICCID
+app.get('/api/admin/verify-iccid/:iccid', async (req: Request, res: Response) => {
+    try {
+        const { iccid } = req.params;
+        console.log(`🔍 Verifying ICCID: ${iccid}...`);
+
+        const details = await esimVendorService.getEsimDetailsByIccid(iccid);
+
+        // Find matching local package if possible
+        // Based on "1GB Data For 7Day in Egypt" logic
+        const packages = await EsimProductMapping.find({ is_live: true });
+
+        res.json({
+            success: true,
+            details,
+            // We'll let the frontend handle the fuzzy matching or 
+            // return a suggested packageId based on name/region matching
+        });
+    } catch (error: any) {
+        res.status(404).json({ success: false, message: error.message });
+    }
+});
+
 // 11.5 Admin: Get All Profiles
 app.get('/api/admin/profiles', async (req: Request, res: Response) => {
     try {

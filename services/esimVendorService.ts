@@ -175,6 +175,30 @@ class EsimVendorService extends EventEmitter {
         // Placeholder until endpoint is known
         return 0;
     }
+
+    /**
+     * Fetch eSIM details by ICCID from the order/inventory endpoint
+     */
+    async getEsimDetailsByIccid(iccid: string): Promise<any> {
+        const token = await this.getToken();
+        console.log(`📡 Fetching details for ICCID: ${iccid}...`);
+
+        try {
+            // Based on probe results, /order/{iccid} is the most promising endpoint
+            const response = await axios.get(`${API_BASE_URL}/order/${iccid}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (response.data && response.data.status) {
+                return response.data;
+            }
+
+            throw new Error('ICCID not found or invalid response from vendor.');
+        } catch (error: any) {
+            console.error(`❌ Error fetching ICCID details (${iccid}):`, error.response?.data || error.message);
+            throw error;
+        }
+    }
 }
 
 export default new EsimVendorService();
