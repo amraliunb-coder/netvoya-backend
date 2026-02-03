@@ -189,11 +189,11 @@ class EsimVendorService extends EventEmitter {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
-            if (response.data && response.data.status) {
-                return response.data;
+            if (response.data && response.data.status && Array.isArray(response.data.data) && response.data.data.length > 0) {
+                return response.data.data[0];
             }
 
-            throw new Error('ICCID not found or invalid response from vendor.');
+            throw new Error('ICCID not found in vendor records (Empty Data).');
         } catch (error: any) {
             console.error(`❌ Error fetching ICCID details (${iccid}):`, error.response?.data || error.message);
             throw error;
