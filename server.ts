@@ -774,6 +774,45 @@ app.post('/api/admin/issue-esim', async (req: Request, res: Response) => {
     }
 });
 
+// 12.1 Get Recent Activations (with Status Sync)
+app.get('/api/partner/activations', async (req: Request, res: Response) => {
+    try {
+        // In a real app, filter by partner_id from JWT
+        // Get last 5 profiles that are Assigned or Active
+        const recentProfiles = await EsimProfile.find({
+            status: { $in: ['Assigned', 'Active'] }
+        })
+            .sort({ updatedAt: -1 })
+            .limit(5);
+
+        const updatedProfiles = await Promise.all(recentProfiles.map(async (profile) => {
+            try {
+                // Sync status with Vendor (or Mock)
+                // This triggers the Demo Mode mock in esimVendorService for the specific ICCIDs
+                const vendorData = await esimVendorService.getEsimDetailsByIccid(profile.iccid);
+
+                if (vendorData && vendorData.status) {
+                    const newStatus = vendorData.status === 'Active' ? 'Active' : 'Assigned';
+
+                    if (profile.status !== newStatus) {
+                        profile.status = newStatus as any; // Cast to enum
+                        await profile.save();
+                        console.log(`🔄 Synced status for ${profile.iccid}: ${newStatus}`);
+                    }
+                }
+                return profile;
+            } catch (err) {
+                console.warn(`⚠️ Failed to sync status for ${profile.iccid}:`, err);
+                return profile; // Return stale if sync fails
+            }
+        }));
+
+        res.json({ success: true, activations: updatedProfiles });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // 12. Get Partner Inventory (Buckets)
 app.get('/api/inventory', async (req: Request, res: Response) => {
     try {
