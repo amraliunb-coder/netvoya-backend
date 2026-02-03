@@ -783,7 +783,8 @@ app.get('/api/partner/activations', async (req: Request, res: Response) => {
             status: { $in: ['Assigned', 'Active'] }
         })
             .sort({ updatedAt: -1 })
-            .limit(5);
+            .limit(5)
+            .populate('bucket_id', 'package_name region');
 
         const updatedProfiles = await Promise.all(recentProfiles.map(async (profile) => {
             try {
