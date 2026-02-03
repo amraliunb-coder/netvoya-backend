@@ -101,13 +101,10 @@ const connectDB = async () => {
         console.log(`📡 Attempting to connect to: ${maskedURI}`);
 
         await mongoose.connect(MONGO_URI, {
-            maxPoolSize: 10,           // Maximum connections in pool
-            minPoolSize: 2,            // Minimum connections to maintain
-            serverSelectionTimeoutMS: 10000,  // Reduced from 30s
-            socketTimeoutMS: 45000,    // Socket timeout
-            family: 4,                 // Force IPv4 (prevents IPv6 issues)
-            retryWrites: true,         // Auto-retry failed writes
-            w: 'majority'              // Write concern for data safety
+            // Simplified options for better stability
+            serverSelectionTimeoutMS: 5000,
+            retryWrites: true,
+            w: 'majority'
         } as any);
 
         mongoose.connection.on('connected', () => {
