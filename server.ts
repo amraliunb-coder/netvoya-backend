@@ -646,6 +646,43 @@ app.post('/api/orders/esim', async (_req: Request, res: Response) => {
     }
 });
 
+// 11.1 Admin: Reset Demo Data (Cleanup)
+app.get('/api/admin/reset-demo', async (_req: Request, res: Response) => {
+    try {
+        console.log('🧹 Resetting Demo Data...');
+        const DEMO_ICCIDS = ['8910300000049564025', '8910300000049564873'];
+        const results = [];
+
+        for (const iccid of DEMO_ICCIDS) {
+            const profile = await EsimProfile.findOne({ iccid });
+            if (!profile) {
+                results.push(`ICCID ${iccid}: Not found (Clean)`);
+                continue;
+            }
+
+            // Update Bucket
+            const bucket = await InventoryBucket.findById(profile.bucket_id);
+            if (bucket) {
+                bucket.total_purchased = Math.max(0, bucket.total_purchased - 1);
+                if (profile.status === 'Available') {
+                    bucket.available_count = Math.max(0, bucket.available_count - 1);
+                } else if (profile.status === 'Assigned') {
+                    bucket.assigned_count = Math.max(0, bucket.assigned_count - 1);
+                }
+                await bucket.save();
+            }
+
+            // Delete Profile
+            await EsimProfile.deleteOne({ _id: profile._id });
+            results.push(`ICCID ${iccid}: Deleted and counts updated.`);
+        }
+
+        res.json({ success: true, message: 'Demo data reset successfully.', logs: results });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // 11.5.1 Admin: Verify ICCID
 app.get('/api/admin/verify-iccid/:iccid', async (req: Request, res: Response) => {
     try {
