@@ -819,13 +819,32 @@ app.post('/api/inventory/:bucketId/assign', async (req: Request, res: Response) 
             $inc: { assigned_count: 1, available_count: -1 }
         });
 
-        // Mock sending email
+        // Send Email to User
         console.log(`📧 Sending automated email to ${email} with QR Code for ICCID: ${profile.iccid}`);
+
+        const emailResult = await emailService.sendEsimAssignmentEmail({
+            email,
+            name,
+            iccid: profile.iccid,
+            activationCode: profile.activation_code,
+            qrCodeUrl: profile.qr_code_url,
+            packageName: bucket.package_name,
+            region: bucket.region,
+            dataLimit: bucket.data_limit_gb,
+            durationDays: bucket.duration_days
+        });
+
+        if (!emailResult.success) {
+            console.warn('⚠️ Assignment saved but email failed:', emailResult.error);
+        }
 
         res.json({
             success: true,
-            message: `Successfully assigned eSIM to ${name}.`,
-            profile
+            message: emailResult.success
+                ? `Successfully assigned eSIM to ${name} and emailed QR code.`
+                : `Assigned to ${name}, but email failed to send.`,
+            profile,
+            emailSent: emailResult.success
         });
     } catch (error: any) {
         res.status(500).json({ success: false, message: error.message });
