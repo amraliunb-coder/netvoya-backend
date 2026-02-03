@@ -192,6 +192,35 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // =============================================================================
 
 /**
+ * Ensure MongoDB connection is alive before database operations.
+ * Critical for Vercel serverless where connections can become stale.
+ */
+const ensureDbConnected = async (): Promise<void> => {
+    const state = mongoose.connection.readyState;
+    // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
+    if (state === 0 || state === 3) {
+        console.log('🔄 MongoDB disconnected. Reconnecting...');
+        await connectDB();
+    } else if (state === 2) {
+        // Currently connecting, wait for it
+        console.log('⏳ MongoDB is connecting, waiting...');
+        await new Promise<void>((resolve) => {
+            const checkConnection = setInterval(() => {
+                if (mongoose.connection.readyState === 1) {
+                    clearInterval(checkConnection);
+                    resolve();
+                }
+            }, 100);
+            // Timeout after 5 seconds
+            setTimeout(() => {
+                clearInterval(checkConnection);
+                resolve();
+            }, 5000);
+        });
+    }
+};
+
+/**
  * Generate JWT token for authenticated user
  */
 const generateToken = (user: any): string => { // User type now comes from Mongoose model
@@ -251,6 +280,7 @@ app.get('/api/health', async (req: Request, res: Response) => {
 // 2. Register Endpoint
 app.post('/api/register', async (req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         const { username, email, password, firstName, lastName, phone, companyName, address1, city, zip, state, country, vatId } = req.body;
 
         // Basic Validation
@@ -321,6 +351,7 @@ app.post('/api/register', async (req: Request, res: Response) => {
 // 3. Login Endpoint
 app.post('/api/login', async (req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         const { email, password } = req.body;
 
         if (!email || !password) {
@@ -373,6 +404,7 @@ app.post('/api/login', async (req: Request, res: Response) => {
 // 4. Get All Users (Debug/Admin only)
 app.get('/api/users', async (req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         const users = await User.find({}, '-password'); // Exclude password from result
         res.json(users);
     } catch (error) {
@@ -384,6 +416,7 @@ app.get('/api/users', async (req: Request, res: Response) => {
 // Updated to handle role-based filtering (Draft vs Live)
 app.get('/api/packages', async (req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         const isAdmin = req.query.admin === 'true';
         const query = isAdmin ? {} : { is_live: true };
 
@@ -412,6 +445,7 @@ app.get('/api/vendor/balance', async (_req: Request, res: Response) => {
 // 7. Toggle Package Live Status
 app.patch('/api/packages/:id/status', async (req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         const { is_live } = req.body;
         const pkg = await EsimProductMapping.findByIdAndUpdate(req.params.id, { is_live }, { new: true });
         res.json({ success: true, package: pkg });
@@ -423,6 +457,7 @@ app.patch('/api/packages/:id/status', async (req: Request, res: Response) => {
 // 7.5 Activate ALL Packages (Set all to Live)
 app.post('/api/packages/activate-all', async (_req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         const result = await EsimProductMapping.updateMany({}, { $set: { is_live: true } });
         res.json({ success: true, message: `Activated ${result.modifiedCount} packages.`, modifiedCount: result.modifiedCount });
     } catch (error: any) {
@@ -433,6 +468,7 @@ app.post('/api/packages/activate-all', async (_req: Request, res: Response) => {
 // 7.6 Seed Country Packages (Admin tool)
 app.post('/api/packages/seed-countries', async (_req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         console.log('🌍 Seeding country packages...');
 
         const packages = [
@@ -646,6 +682,7 @@ app.post('/api/orders/esim', async (_req: Request, res: Response) => {
 // 11.1 Admin: Reset Demo Data (Cleanup)
 app.get('/api/admin/reset-demo', async (_req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         console.log('🧹 Resetting Demo Data...');
         const DEMO_ICCIDS = ['8910300000049564025', '8910300000049564873'];
         const results = [];
@@ -706,6 +743,7 @@ app.get('/api/admin/verify-iccid/:iccid', async (req: Request, res: Response) =>
 // 11.5 Admin: Get All Profiles
 app.get('/api/admin/profiles', async (req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         // In real app: verify admin role via middleware
         const profiles = await EsimProfile.find().sort({ createdAt: -1 });
 
@@ -722,6 +760,7 @@ app.get('/api/admin/profiles', async (req: Request, res: Response) => {
 // 11.6 Admin: Manual Issue eSIM
 app.post('/api/admin/issue-esim', async (req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         const { partnerId, packageId, iccid, activationCode, qrCodeUrl } = req.body;
 
         if (!partnerId || !packageId || !iccid || !activationCode) {
@@ -777,6 +816,7 @@ app.post('/api/admin/issue-esim', async (req: Request, res: Response) => {
 // 12.1 Get Recent Activations (with Status Sync)
 app.get('/api/partner/activations', async (req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         // In a real app, filter by partner_id from JWT
         // Get last 5 profiles that are Assigned or Active
         const recentProfiles = await EsimProfile.find({
@@ -817,6 +857,7 @@ app.get('/api/partner/activations', async (req: Request, res: Response) => {
 // 12. Get Partner Inventory (Buckets)
 app.get('/api/inventory', async (req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         // In a real app, this would be filtered by the logged-in user's ID from JWT
         // For demo, we'll return all buckets if a partner_id is provided or just all
         const partner_id = req.query.partner_id;
@@ -831,6 +872,7 @@ app.get('/api/inventory', async (req: Request, res: Response) => {
 // 13. Assign eSIM from Bucket
 app.post('/api/inventory/:bucketId/assign', async (req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         const { bucketId } = req.params;
         const { name, email } = req.body;
 
