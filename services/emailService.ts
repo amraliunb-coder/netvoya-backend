@@ -144,7 +144,7 @@ export const sendEsimAssignmentEmail = async (details: AssignmentDetails) => {
         const htmlContent = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; background-color: #fafafa;">
                 <div style="text-align: center; margin-bottom: 20px;">
-                    <img src="https://res.cloudinary.com/drzid08rg/image/upload/v1770202654/ChatGPT_Image_Feb_3_2026_04_46_05_PM_obgtc3.png" alt="NetVoya Logo" style="width: 60px; height: 100px; margin-bottom: 15px;" />
+                    <img src="https://res.cloudinary.com/drzid08rg/image/upload/v1770202654/ChatGPT_Image_Feb_3_2026_04_46_05_PM_obgtc3.png" alt="NetVoya Logo" style="height: 120px; margin-bottom: 15px;" />
                     <h2 style="color: #F97316; margin: 0;">NetVoya eSIM Assigned</h2>
                     <p style="color: #666; font-size: 14px; margin-top: 5px;">Your digital connectivity is ready.</p>
                 </div>
