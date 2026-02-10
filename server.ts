@@ -403,7 +403,8 @@ app.post('/api/login', async (req: Request, res: Response) => {
                 email: user.email,
                 role: user.role,
                 firstName: user.firstName,
-                companyName: user.companyName
+                companyName: user.companyName,
+                requiresPasswordChange: user.requiresPasswordChange || false
             },
             token
         });
@@ -1192,9 +1193,68 @@ app.patch('/api/notifications/:id/read', async (req: Request, res: Response) => 
     }
 });
 
-// =============================================================================
-// ERROR HANDLING
-// =============================================================================
+// 25. Change Password
+app.patch('/api/user/change-password', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const { userId, currentPassword, newPassword } = req.body;
+
+        if (!userId || !currentPassword || !newPassword) {
+            return res.status(400).json({ success: false, message: 'All fields are required' });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Verify current password
+        const isMatch = await bcrypt.compare(currentPassword, user.password || '');
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: 'Incorrect current password' });
+        }
+
+        // Hash and save new password
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(newPassword, salt);
+        user.requiresPasswordChange = false;
+        await user.save();
+
+        console.log(`🔐 Password updated for user: ${user.email}`);
+
+        res.json({
+            success: true,
+            message: 'Password updated successfully'
+        });
+
+    } catch (error: any) {
+        console.error('Change Password Error:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+// 26. Initialize Khairy (Temporary for first time login prompt)
+app.post('/api/admin/init-khairy', async (_req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const user = await User.findOne({
+            $or: [
+                { username: /^khairy$/i },
+                { email: /khairy/i }
+            ]
+        });
+
+        if (user) {
+            user.requiresPasswordChange = true;
+            await user.save();
+            return res.json({ success: true, message: `User ${user.email} flagged for password change.` });
+        } else {
+            return res.status(404).json({ success: false, message: 'User Khairy not found.' });
+        }
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
 
 // 404 handler
 app.use((_req: Request, res: Response) => {
