@@ -80,6 +80,7 @@ import User from './models/User.js';
 import EsimProductMapping from './models/EsimProductMapping.js';
 import InventoryBucket from './models/InventoryBucket.js';
 import EsimProfile from './models/EsimProfile.js';
+import Notification from './models/Notification.js';
 import esimVendorService from './services/esimVendorService.js';
 import emailService from './services/emailService.js';
 
@@ -328,6 +329,14 @@ app.post('/api/register', async (req: Request, res: Response) => {
             JWT_SECRET,
             { expiresIn: '24h' }
         );
+
+        // Create Welcome Notification
+        await Notification.create({
+            userId: newUser._id,
+            title: 'Welcome to Netvoya!',
+            message: `Hi ${firstName || username}, we're thrilled to have you as a partner! Explore your dashboard to manage eSIMs, view inventory, and integrate our API into your own application.`,
+            type: 'info'
+        });
 
         // Send Response
         return res.status(201).json({
@@ -1141,6 +1150,43 @@ app.put('/api/partner/settings/webhook', async (req: Request, res: Response) => 
             message: 'Webhook URL saved successfully.',
             webhookUrl: user.webhookUrl
         });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 23. Get User Notifications
+app.get('/api/notifications', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const userId = req.query.userId;
+        if (!userId) return res.status(400).json({ success: false, message: 'userId required' });
+
+        const notifications = await Notification.find({ userId })
+            .sort({ createdAt: -1 })
+            .limit(20);
+
+        res.json({ success: true, notifications });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 24. Mark Notification as Read
+app.patch('/api/notifications/:id/read', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const notification = await Notification.findByIdAndUpdate(
+            req.params.id,
+            { isRead: true },
+            { new: true }
+        );
+
+        if (!notification) {
+            return res.status(404).json({ success: false, message: 'Notification not found' });
+        }
+
+        res.json({ success: true, notification });
     } catch (error: any) {
         res.status(500).json({ success: false, message: error.message });
     }
