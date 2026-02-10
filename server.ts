@@ -1052,6 +1052,97 @@ process.on('SIGINT', async () => {
 });
 
 // =============================================================================
+// PARTNER SETTINGS (API Keys & Webhooks)
+// =============================================================================
+
+import crypto from 'crypto';
+
+// 20. Get Partner Settings
+app.get('/api/partner/settings', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const partner_id = req.query.partner_id;
+        if (!partner_id) return res.status(400).json({ success: false, message: 'partner_id required' });
+
+        const user = await User.findById(partner_id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+        // Mask the API key for display (show first 12 and last 4 chars)
+        let maskedKey = '';
+        if (user.apiKey) {
+            const key = user.apiKey;
+            maskedKey = key.substring(0, 12) + '...' + key.substring(key.length - 4);
+        }
+
+        res.json({
+            success: true,
+            settings: {
+                apiKey: maskedKey,
+                hasApiKey: !!user.apiKey,
+                webhookUrl: user.webhookUrl || ''
+            }
+        });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 21. Generate API Key
+app.post('/api/partner/settings/generate-key', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const { partner_id } = req.body;
+        if (!partner_id) return res.status(400).json({ success: false, message: 'partner_id required' });
+
+        const user = await User.findById(partner_id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+        // Generate a new API key: nv_live_<32 hex chars>
+        const rawKey = crypto.randomBytes(32).toString('hex');
+        const apiKey = `nv_live_${rawKey}`;
+
+        user.apiKey = apiKey;
+        await user.save();
+
+        console.log(`🔑 API Key generated for partner: ${user.email}`);
+
+        // Return the FULL key (only shown once)
+        res.json({
+            success: true,
+            apiKey: apiKey,
+            message: 'API key generated. Save it securely — it will only be shown once.'
+        });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 22. Update Webhook URL
+app.put('/api/partner/settings/webhook', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const { partner_id, webhookUrl } = req.body;
+        if (!partner_id) return res.status(400).json({ success: false, message: 'partner_id required' });
+
+        const user = await User.findById(partner_id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+        user.webhookUrl = webhookUrl || '';
+        await user.save();
+
+        console.log(`🔗 Webhook URL updated for partner: ${user.email}`);
+
+        res.json({
+            success: true,
+            message: 'Webhook URL saved successfully.',
+            webhookUrl: user.webhookUrl
+        });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// =============================================================================
 // ERROR HANDLING
 // =============================================================================
 

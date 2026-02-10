@@ -13,6 +13,8 @@ export interface IUser extends Document {
     country?: string;
     vatId?: string;
     role: 'partner' | 'admin';
+    apiKey?: string;
+    webhookUrl?: string;
     createdAt: Date;
 }
 
@@ -29,6 +31,8 @@ const UserSchema: Schema = new Schema({
     country: { type: String },
     vatId: { type: String },
     role: { type: String, enum: ['partner', 'admin'], default: 'partner' }, // Default is 'partner'
+    apiKey: { type: String },
+    webhookUrl: { type: String }
 }, {
     timestamps: true // Automatically adds createdAt and updatedAt
 });
