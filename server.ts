@@ -337,7 +337,9 @@ app.post('/api/register', async (req: Request, res: Response) => {
                 id: newUser._id,
                 username: newUser.username,
                 email: newUser.email,
-                role: newUser.role
+                role: newUser.role,
+                firstName: newUser.firstName,
+                companyName: newUser.companyName
             },
             token
         });
@@ -390,7 +392,9 @@ app.post('/api/login', async (req: Request, res: Response) => {
                 id: user._id,
                 username: user.username,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                firstName: user.firstName,
+                companyName: user.companyName
             },
             token
         });
