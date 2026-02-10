@@ -819,9 +819,20 @@ app.get('/api/partner/activations', async (req: Request, res: Response) => {
         await ensureDbConnected();
         // In a real app, filter by partner_id from JWT
         // Get last 5 profiles that are Assigned or Active
-        const recentProfiles = await EsimProfile.find({
+        const partner_id = req.query.partner_id;
+
+        let filter: any = {
             status: { $in: ['Assigned', 'Active'] }
-        })
+        };
+
+        if (partner_id) {
+            // Find buckets belonging to this partner
+            const buckets = await InventoryBucket.find({ partner_id });
+            const bucketIds = buckets.map(b => b._id);
+            filter.bucket_id = { $in: bucketIds };
+        }
+
+        const recentProfiles = await EsimProfile.find(filter)
             .sort({ updatedAt: -1 })
             .limit(5)
             .populate('bucket_id', 'package_name region');
