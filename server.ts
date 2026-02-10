@@ -1233,29 +1233,6 @@ app.patch('/api/user/change-password', async (req: Request, res: Response) => {
     }
 });
 
-// 26. Initialize Khairy (Temporary for first time login prompt)
-app.post('/api/admin/init-khairy', async (_req: Request, res: Response) => {
-    try {
-        await ensureDbConnected();
-        const user = await User.findOne({
-            $or: [
-                { username: /^khairy$/i },
-                { email: /khairy/i }
-            ]
-        });
-
-        if (user) {
-            user.requiresPasswordChange = true;
-            await user.save();
-            return res.json({ success: true, message: `User ${user.email} flagged for password change.` });
-        } else {
-            return res.status(404).json({ success: false, message: 'User Khairy not found.' });
-        }
-    } catch (error: any) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
-
 // 404 handler
 app.use((_req: Request, res: Response) => {
     res.status(404).json({
