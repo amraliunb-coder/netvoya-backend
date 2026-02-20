@@ -758,12 +758,18 @@ app.get('/api/admin/verify-iccid/:iccid', async (req: Request, res: Response) =>
 app.get('/api/admin/profiles', async (req: Request, res: Response) => {
     try {
         await ensureDbConnected();
-        // In real app: verify admin role via middleware
-        const profiles = await EsimProfile.find().sort({ createdAt: -1 });
+        const partner_id = req.query.partnerId as string;
 
-        // Enrich with package name from bucket if possible
-        // For performance, we'll just return profiles first. 
-        // A robust solution would .populate('bucket_id')
+        let query: any = {};
+
+        if (partner_id) {
+            // Find buckets for this partner
+            const buckets = await InventoryBucket.find({ partner_id });
+            const bucketIds = buckets.map(b => b._id);
+            query.bucket_id = { $in: bucketIds };
+        }
+
+        const profiles = await EsimProfile.find(query).sort({ createdAt: -1 });
 
         res.json({ success: true, profiles });
     } catch (error: any) {
