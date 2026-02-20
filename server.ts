@@ -827,6 +827,110 @@ app.post('/api/admin/issue-esim', async (req: Request, res: Response) => {
     }
 });
 
+// 11.7 Admin: Bulk Import eSIMs
+app.post('/api/admin/bulk-import', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const { partnerId, packageId, esims } = req.body;
+
+        if (!partnerId || !packageId || !esims || !Array.isArray(esims) || esims.length === 0) {
+            return res.status(400).json({ success: false, message: 'Missing required fields: partnerId, packageId, and esims array' });
+        }
+
+        // 1. Get Package Details
+        const pkg = await EsimProductMapping.findById(packageId);
+        if (!pkg) return res.status(404).json({ success: false, message: 'Package not found' });
+
+        // 2. Verify partner exists
+        const partner = await User.findById(partnerId);
+        if (!partner) return res.status(404).json({ success: false, message: 'Partner not found' });
+
+        // 3. Find or Create InventoryBucket
+        let bucket = await InventoryBucket.findOne({ partner_id: partnerId, package_id: packageId });
+
+        if (!bucket) {
+            bucket = new InventoryBucket({
+                partner_id: partnerId,
+                package_id: packageId,
+                package_name: pkg.name,
+                region: pkg.region,
+                data_limit_gb: pkg.data_limit_gb,
+                duration_days: pkg.duration_days,
+                total_purchased: 0,
+                assigned_count: 0,
+                available_count: 0
+            });
+            await bucket.save();
+        }
+
+        // 4. Check for existing ICCIDs to avoid duplicates
+        const incomingIccids = esims.map((e: any) => e.iccid).filter(Boolean);
+        const existingProfiles = await EsimProfile.find({ iccid: { $in: incomingIccids } });
+        const existingIccidSet = new Set(existingProfiles.map(p => p.iccid));
+
+        // 5. Build profiles to insert
+        const profilesToInsert: any[] = [];
+        const skippedIccids: string[] = [];
+        const errors: string[] = [];
+
+        for (const esim of esims) {
+            const { iccid, smdp_address, matching_id } = esim;
+
+            if (!iccid) {
+                errors.push('Row with missing ICCID skipped');
+                continue;
+            }
+
+            if (existingIccidSet.has(iccid)) {
+                skippedIccids.push(iccid);
+                continue;
+            }
+
+            // Build activation code from smdp_address and matching_id
+            const activationCode = (smdp_address && matching_id)
+                ? `LPA:1$${smdp_address}$${matching_id}`
+                : `LPA:1$unknown$${iccid}`;
+
+            const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(activationCode)}`;
+
+            profilesToInsert.push({
+                bucket_id: bucket._id,
+                iccid,
+                activation_code: activationCode,
+                qr_code_url: qrCodeUrl,
+                status: 'Available'
+            });
+        }
+
+        // 6. Bulk insert
+        let importedCount = 0;
+        if (profilesToInsert.length > 0) {
+            await EsimProfile.insertMany(profilesToInsert);
+            importedCount = profilesToInsert.length;
+
+            // 7. Update bucket counts
+            bucket.total_purchased += importedCount;
+            bucket.available_count += importedCount;
+            await bucket.save();
+        }
+
+        console.log(`📦 Bulk import: ${importedCount} imported, ${skippedIccids.length} skipped (duplicates), ${errors.length} errors for partner ${partner.companyName || partner.username}`);
+
+        res.json({
+            success: true,
+            message: `Bulk import complete: ${importedCount} eSIMs imported to ${partner.companyName || partner.username}.`,
+            imported: importedCount,
+            skipped: skippedIccids.length,
+            skippedIccids,
+            errors
+        });
+
+    } catch (error: any) {
+        console.error('Bulk Import Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // 12.1 Get Recent Activations (with Status Sync)
 app.get('/api/partner/activations', async (req: Request, res: Response) => {
     try {
