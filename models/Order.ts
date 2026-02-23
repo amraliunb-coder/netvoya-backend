@@ -4,8 +4,11 @@ export interface IOrderPackage {
     name: string;
     region: string;
     quantity: number;
+    cost: number;
     price: number;
+    totalCost: number;
     total: number;
+    profit: number;
 }
 
 export interface IOrder extends Document {
@@ -13,7 +16,9 @@ export interface IOrder extends Document {
     partner_name: string;
     partner_email: string;
     totalTokens: number;
+    totalCost: number;
     totalAmount: number;
+    totalProfit: number;
     discountLabel: string | null;
     packages: IOrderPackage[];
     status: 'Pending' | 'Processing' | 'Completed' | 'Cancelled';
@@ -26,14 +31,19 @@ const OrderSchema = new Schema({
     partner_name: { type: String, required: true },
     partner_email: { type: String, required: true },
     totalTokens: { type: Number, required: true },
+    totalCost: { type: Number, default: 0 },
     totalAmount: { type: Number, required: true },
+    totalProfit: { type: Number, default: 0 },
     discountLabel: { type: String, default: null },
     packages: [{
         name: { type: String, required: true },
         region: { type: String, required: true },
         quantity: { type: Number, required: true },
+        cost: { type: Number, default: 0 },
         price: { type: Number, required: true },
-        total: { type: Number, required: true }
+        totalCost: { type: Number, default: 0 },
+        total: { type: Number, required: true },
+        profit: { type: Number, default: 0 }
     }],
     status: {
         type: String,

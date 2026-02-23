@@ -1152,15 +1152,41 @@ app.post('/api/request-inventory', async (req: Request, res: Response) => {
             if (partnerUser) partnerId = partnerUser._id;
         }
 
+        // Calculate secure costs and profits based on current EsimProductMapping
+        let calculatedTotalCost = 0;
+        let calculatedTotalProfit = 0;
+
+        const enrichedPackages = await Promise.all(packages.map(async (pkg: any) => {
+            // Find current mapping to get wholesale cost
+            const mapping = await EsimProductMapping.findOne({ name: pkg.name, region: pkg.region });
+            const wholesaleCost = mapping ? mapping.wholesale_cost : 0;
+
+            const packageCost = wholesaleCost;
+            const packageTotalCost = packageCost * pkg.quantity;
+            const packageProfit = pkg.total - packageTotalCost; // total is the retail price they paid for this line item
+
+            calculatedTotalCost += packageTotalCost;
+            calculatedTotalProfit += packageProfit;
+
+            return {
+                ...pkg,
+                cost: packageCost,
+                totalCost: packageTotalCost,
+                profit: packageProfit
+            };
+        }));
+
         // Persist Order to database
         const order = await Order.create({
             partner_id: partnerId,
             partner_name: partnerInfo?.name || 'Unknown Partner',
             partner_email: partnerInfo?.email || 'unknown',
             totalTokens,
+            totalCost: calculatedTotalCost,
             totalAmount,
+            totalProfit: calculatedTotalProfit,
             discountLabel: discountLabel || null,
-            packages,
+            packages: enrichedPackages,
             status: 'Pending'
         });
 
@@ -1243,6 +1269,69 @@ app.patch('/api/admin/orders/:id/status', async (req: Request, res: Response) =>
         console.log(`📋 Order ${order._id} status updated to: ${status}`);
         res.json({ success: true, message: `Order status updated to ${status}`, order });
     } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 18.5 Admin: Revenue Analytics
+app.get('/api/admin/revenue', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const { partner_id } = req.query;
+
+        const query: any = { status: 'Completed' };
+        if (partner_id && partner_id !== 'all') {
+            query.partner_id = partner_id;
+        }
+
+        const orders = await Order.find(query).sort({ createdAt: -1 }).lean();
+
+        let totalRevenue = 0;
+        let totalCost = 0;
+        let totalProfit = 0;
+
+        // Process orders and handle backwards compatibility for old orders without native cost tracking
+        const processedOrders = orders.map((order: any) => {
+            let orderCost = order.totalCost || 0;
+            let orderProfit = order.totalProfit || 0;
+            const orderRevenue = order.totalAmount || 0;
+
+            // If it's an old order, estimate 20% cost for display purposes
+            if (!order.totalCost && orderRevenue > 0) {
+                orderCost = orderRevenue * 0.20;
+                orderProfit = orderRevenue - orderCost;
+            }
+
+            totalRevenue += orderRevenue;
+            totalCost += orderCost;
+            totalProfit += orderProfit;
+
+            const planSummary = order.packages?.length === 1
+                ? order.packages[0].name
+                : `${order.packages?.[0]?.name || 'Auto Plan'} +${(order.packages?.length || 1) - 1} more`;
+
+            return {
+                id: order._id,
+                client: order.partner_name,
+                plan: planSummary,
+                amount: orderRevenue,
+                cost: orderCost,
+                profit: orderProfit,
+                date: order.createdAt
+            };
+        });
+
+        res.json({
+            success: true,
+            stats: {
+                totalRevenue,
+                totalCost,
+                totalProfit
+            },
+            orders: processedOrders
+        });
+    } catch (error: any) {
+        console.error('Revenue Error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
