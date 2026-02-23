@@ -81,6 +81,7 @@ import EsimProductMapping from './models/EsimProductMapping.js';
 import InventoryBucket from './models/InventoryBucket.js';
 import EsimProfile from './models/EsimProfile.js';
 import Notification from './models/Notification.js';
+import Order from './models/Order.js';
 import esimVendorService from './services/esimVendorService.js';
 import emailService from './services/emailService.js';
 
@@ -1135,6 +1136,7 @@ app.post('/api/test/seed-inventory', async (req: Request, res: Response) => {
 // 16. Request Inventory (Email Notification)
 app.post('/api/request-inventory', async (req: Request, res: Response) => {
     try {
+        await ensureDbConnected();
         const { totalTokens, totalAmount, discountLabel, packages, partnerInfo } = req.body;
 
         if (!totalTokens || !packages || packages.length === 0) {
@@ -1142,6 +1144,27 @@ app.post('/api/request-inventory', async (req: Request, res: Response) => {
         }
 
         console.log(`📝 Received inventory request for ${totalTokens} tokens ($${totalAmount})`);
+
+        // Resolve partner_id from email if possible
+        let partnerId = null;
+        if (partnerInfo?.email) {
+            const partnerUser = await User.findOne({ email: partnerInfo.email });
+            if (partnerUser) partnerId = partnerUser._id;
+        }
+
+        // Persist Order to database
+        const order = await Order.create({
+            partner_id: partnerId,
+            partner_name: partnerInfo?.name || 'Unknown Partner',
+            partner_email: partnerInfo?.email || 'unknown',
+            totalTokens,
+            totalAmount,
+            discountLabel: discountLabel || null,
+            packages,
+            status: 'Pending'
+        });
+
+        console.log(`✅ Order ${order._id} saved to database`);
 
         // Send Email
         const emailResult = await emailService.sendInventoryRequestEmail({
@@ -1153,15 +1176,45 @@ app.post('/api/request-inventory', async (req: Request, res: Response) => {
         });
 
         if (emailResult.success) {
-            res.json({ success: true, message: 'Request submitted and email sent.' });
+            res.json({ success: true, message: 'Request submitted and email sent.', orderId: order._id });
         } else {
-            console.warn('⚠️ Request saved but email failed:', emailResult.error);
-            // Still return success to frontend so user flow isn't broken, but log the error
-            res.json({ success: true, message: 'Request submitted (email delivery pending).' });
+            console.warn('⚠️ Order saved but email failed:', emailResult.error);
+            res.json({ success: true, message: 'Request submitted (email delivery pending).', orderId: order._id });
         }
 
     } catch (error: any) {
         console.error('Request Inventory Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 17. Admin: Get Recent Orders
+app.get('/api/admin/recent-orders', async (_req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const orders = await Order.find()
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .lean();
+
+        const mapped = orders.map((order: any) => {
+            // Build a plan summary from packages
+            const planSummary = order.packages.length === 1
+                ? order.packages[0].name
+                : `${order.packages[0].name} +${order.packages.length - 1} more`;
+
+            return {
+                id: order._id,
+                client: order.partner_name,
+                plan: planSummary,
+                amount: `$${order.totalAmount.toLocaleString()}`,
+                status: order.status,
+                date: order.createdAt
+            };
+        });
+
+        res.json({ success: true, orders: mapped });
+    } catch (error: any) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
