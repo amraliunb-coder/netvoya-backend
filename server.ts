@@ -1219,6 +1219,34 @@ app.get('/api/admin/recent-orders', async (_req: Request, res: Response) => {
     }
 });
 
+// 18. Admin: Update Order Status
+app.patch('/api/admin/orders/:id/status', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const { status } = req.body;
+        const validStatuses = ['Pending', 'Processing', 'Completed', 'Cancelled'];
+
+        if (!status || !validStatuses.includes(status)) {
+            return res.status(400).json({ success: false, message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+        }
+
+        const order = await Order.findByIdAndUpdate(
+            req.params.id,
+            { status },
+            { new: true }
+        );
+
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Order not found' });
+        }
+
+        console.log(`📋 Order ${order._id} status updated to: ${status}`);
+        res.json({ success: true, message: `Order status updated to ${status}`, order });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // =============================================================================
 // SERVER SHUTDOWN
 // =============================================================================
