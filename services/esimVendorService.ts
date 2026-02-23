@@ -177,7 +177,7 @@ class EsimVendorService extends EventEmitter {
     }
 
     /**
-     * Fetch eSIM details by ICCID from the order/inventory endpoint
+     * Fetch eSIM details and usage by ICCID from the vendor API
      */
     async getEsimDetailsByIccid(iccid: string): Promise<any> {
         // DEMO BYPASS: Specific ICCIDs for Client Simulation
@@ -220,21 +220,37 @@ class EsimVendorService extends EventEmitter {
         }
 
         const token = await this.getToken();
-        console.log(`📡 Fetching details for ICCID: ${iccid}...`);
+        console.log(`📡 Fetching usage details for ICCID: ${iccid}...`);
 
         try {
-            // Based on probe results, /order/{iccid} is the most promising endpoint
-            const response = await axios.get(`${API_BASE_URL}/order/${iccid}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            // Updated endpoint to /my-sim/{iccid}/usage which reliably returns usage for active eSIMs
+            const response = await axios.get(`${API_BASE_URL}/my-sim/${iccid}/usage`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json'
+                }
             });
 
-            if (response.data && response.data.status && Array.isArray(response.data.data) && response.data.data.length > 0) {
-                return response.data.data[0];
+            if (response.data && response.data.status && response.data.data) {
+                const vendorData = response.data.data;
+
+                // Map to our internal structure used by server.ts and frontend
+                return {
+                    iccid: iccid,
+                    status: 'Active', // If it has usage, it's Active
+                    balance: {
+                        initial_data: `${vendorData.initial_data_quantity} ${vendorData.initial_data_unit}`,
+                        remaining_data: `${vendorData.rem_data_quantity} ${vendorData.rem_data_unit}`,
+                        // Vendor doesn't provide expiration in this specific endpoint, 
+                        // we'll leave it null for server.ts to handle
+                        expiration_date: null
+                    }
+                };
             }
 
-            throw new Error('ICCID not found in vendor records (Empty Data).');
+            throw new Error(`ICCID ${iccid} not found or no usage data available.`);
         } catch (error: any) {
-            console.error(`❌ Error fetching ICCID details (${iccid}):`, error.response?.data || error.message);
+            console.error(`❌ Error fetching ICCID usage (${iccid}):`, error.response?.data || error.message);
             throw error;
         }
     }
