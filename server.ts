@@ -1248,6 +1248,82 @@ app.patch('/api/admin/orders/:id/status', async (req: Request, res: Response) =>
 });
 
 // =============================================================================
+// eSIM USAGE TRACKING
+// =============================================================================
+
+// 19. Get single eSIM usage by ICCID
+app.get('/api/esim/usage/:iccid', async (req: Request, res: Response) => {
+    try {
+        const { iccid } = req.params;
+        const details = await esimVendorService.getEsimDetailsByIccid(iccid);
+
+        res.json({
+            success: true,
+            usage: {
+                iccid,
+                status: details.status || 'Unknown',
+                initial_data: details.balance?.initial_data || null,
+                remaining_data: details.balance?.remaining_data || null,
+                expiration_date: details.balance?.expiration_date || null
+            }
+        });
+    } catch (error: any) {
+        // Return empty usage instead of error so frontend can degrade gracefully
+        res.json({
+            success: false,
+            usage: { iccid: req.params.iccid, status: 'Unknown', initial_data: null, remaining_data: null, expiration_date: null }
+        });
+    }
+});
+
+// 20. Batch eSIM usage lookup
+app.post('/api/esim/usage/batch', async (req: Request, res: Response) => {
+    try {
+        const { iccids } = req.body;
+        if (!iccids || !Array.isArray(iccids) || iccids.length === 0) {
+            return res.status(400).json({ success: false, message: 'iccids array required' });
+        }
+
+        // Limit to 20 ICCIDs per batch to avoid overloading vendor API
+        const limited = iccids.slice(0, 20);
+
+        const results = await Promise.allSettled(
+            limited.map(async (iccid: string) => {
+                try {
+                    const details = await esimVendorService.getEsimDetailsByIccid(iccid);
+                    return {
+                        iccid,
+                        status: details.status || 'Unknown',
+                        initial_data: details.balance?.initial_data || null,
+                        remaining_data: details.balance?.remaining_data || null,
+                        expiration_date: details.balance?.expiration_date || null
+                    };
+                } catch {
+                    return {
+                        iccid,
+                        status: 'Unknown',
+                        initial_data: null,
+                        remaining_data: null,
+                        expiration_date: null
+                    };
+                }
+            })
+        );
+
+        const usageMap: Record<string, any> = {};
+        results.forEach((result) => {
+            if (result.status === 'fulfilled') {
+                usageMap[result.value.iccid] = result.value;
+            }
+        });
+
+        res.json({ success: true, usage: usageMap });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// =============================================================================
 // SERVER SHUTDOWN
 // =============================================================================
 process.on('SIGINT', async () => {
