@@ -1,4 +1,4 @@
-import emailService from '../services/emailService.ts';
+import emailService from '../services/emailService.js';
 import dotenv from 'dotenv';
 dotenv.config();
 

@@ -968,7 +968,27 @@ app.get('/api/partner/activations', async (req: Request, res: Response) => {
                 const vendorData = await esimVendorService.getEsimDetailsByIccid(profile.iccid);
 
                 if (vendorData && vendorData.status) {
-                    const newStatus = vendorData.status === 'Active' ? 'Active' : 'Assigned';
+                    let newStatus = vendorData.status === 'Active' ? 'Active' : 'Assigned';
+
+                    // Ensure the token has data usage before remaining Active
+                    if (newStatus === 'Active' && vendorData.balance) {
+                        const parseVal = (str: string) => {
+                            if (!str) return 0;
+                            const num = parseFloat(str) || 0;
+                            if (str.toUpperCase().includes('GB')) return num * 1024;
+                            if (str.toUpperCase().includes('MB')) return num;
+                            return num;
+                        };
+
+                        const initial = parseVal(vendorData.balance.initial_data);
+                        const remaining = parseVal(vendorData.balance.remaining_data);
+
+                        // If no data has been used, keep it as Assigned
+                        // We check remaining >= initial, accounting for possible minor discrepancies or MB/GB conversions rounding up.
+                        if (initial > 0 && remaining >= initial) {
+                            newStatus = 'Assigned';
+                        }
+                    }
 
                     if (profile.status !== newStatus) {
                         profile.status = newStatus as any; // Cast to enum

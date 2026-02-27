@@ -1,5 +1,5 @@
 
-import esimVendorService from './services/esimVendorService.ts';
+import esimVendorService from './services/esimVendorService.js';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 

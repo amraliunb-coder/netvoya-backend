@@ -1,5 +1,5 @@
 
-import esimVendorService from './services/esimVendorService';
+import esimVendorService from './services/esimVendorService.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
