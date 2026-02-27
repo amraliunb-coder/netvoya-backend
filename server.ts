@@ -1295,10 +1295,10 @@ app.get('/api/admin/revenue', async (req: Request, res: Response) => {
             let orderProfit = order.totalProfit || 0;
             const orderRevenue = order.totalAmount || 0;
 
-            // If it's an old order, estimate 20% cost for display purposes
+            // If it's an old order, estimate 20% profit margin and 80% cost
             if (!order.totalCost && orderRevenue > 0) {
-                orderCost = orderRevenue * 0.20;
-                orderProfit = orderRevenue - orderCost;
+                orderProfit = orderRevenue * 0.20;
+                orderCost = orderRevenue - orderProfit;
             }
 
             totalRevenue += orderRevenue;
