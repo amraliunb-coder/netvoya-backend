@@ -97,9 +97,9 @@ class EsimVendorService extends EventEmitter {
         let lastPage = 1;
 
         try {
-            // First request to discover total pages
-            console.log(`   Fetching page 1 (discovery)...`);
-            const firstResponse = await axios.get(`${API_BASE_URL}/packages?page=1`, {
+            // First request to discover total pages with a large per_page size
+            console.log(`   Fetching page 1 with per_page=200 (discovery)...`);
+            const firstResponse = await axios.get(`${API_BASE_URL}/packages?page=1&per_page=200`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const firstData = firstResponse.data?.data || [];
@@ -113,15 +113,15 @@ class EsimVendorService extends EventEmitter {
             }
             page = 2;
 
-            console.log(`   Total pages to fetch: ${lastPage}`);
+            console.log(`   Total pages to fetch (200 records/page): ${lastPage}`);
 
-            // Fetch remaining pages in smaller batches with retries to prevent 429 rate limit
-            const BATCH_SIZE = 2;
+            // Fetch remaining pages in small batches with retries
+            const BATCH_SIZE = 3;
 
             const fetchPageWithRetry = async (p: number, retries = 3): Promise<any[]> => {
                 for (let attempt = 1; attempt <= retries; attempt++) {
                     try {
-                        const res = await axios.get(`${API_BASE_URL}/packages?page=${p}`, {
+                        const res = await axios.get(`${API_BASE_URL}/packages?page=${p}&per_page=200`, {
                             headers: { 'Authorization': `Bearer ${token}` },
                             timeout: 20000
                         });
@@ -131,8 +131,7 @@ class EsimVendorService extends EventEmitter {
                             console.warn(`⚠️ Failed to fetch page ${p} after ${retries} attempts: ${err.message}`);
                             return [];
                         }
-                        // Wait before retrying (e.g., 2s, 4s)
-                        await new Promise(r => setTimeout(r, 2000 * attempt));
+                        await new Promise(r => setTimeout(r, 1500 * attempt));
                     }
                 }
                 return [];
