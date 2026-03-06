@@ -115,38 +115,47 @@ class EsimVendorService extends EventEmitter {
 
             console.log(`   Total pages to fetch: ${lastPage}`);
 
-            // Fetch remaining pages in batches of 5 (parallel) to stay within timeout
-            const BATCH_SIZE = 5;
+            // Fetch remaining pages in smaller batches with retries to prevent 429 rate limit
+            const BATCH_SIZE = 2;
+
+            const fetchPageWithRetry = async (p: number, retries = 3): Promise<any[]> => {
+                for (let attempt = 1; attempt <= retries; attempt++) {
+                    try {
+                        const res = await axios.get(`${API_BASE_URL}/packages?page=${p}`, {
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            timeout: 20000
+                        });
+                        return res.data?.data || [];
+                    } catch (err: any) {
+                        if (attempt === retries) {
+                            console.warn(`⚠️ Failed to fetch page ${p} after ${retries} attempts: ${err.message}`);
+                            return [];
+                        }
+                        // Wait before retrying (e.g., 2s, 4s)
+                        await new Promise(r => setTimeout(r, 2000 * attempt));
+                    }
+                }
+                return [];
+            };
+
             while (hasMore && page <= lastPage) {
                 const batch = [];
                 for (let i = 0; i < BATCH_SIZE && page <= lastPage; i++, page++) {
                     batch.push(page);
                 }
 
-                console.log(`   Fetching pages ${batch[0]}–${batch[batch.length - 1]} in parallel...`);
+                console.log(`   Fetching pages ${batch[0]}–${batch[batch.length - 1]}...`);
 
-                const batchResults = await Promise.allSettled(
-                    batch.map(p =>
-                        axios.get(`${API_BASE_URL}/packages?page=${p}`, {
-                            headers: { 'Authorization': `Bearer ${token}` },
-                            timeout: 15000
-                        })
-                    )
-                );
+                const batchResults = await Promise.all(batch.map(p => fetchPageWithRetry(p)));
 
-                for (const result of batchResults) {
-                    if (result.status === 'fulfilled') {
-                        const data = result.value.data?.data || [];
-                        allPackages = allPackages.concat(data);
-                    } else {
-                        console.warn(`⚠️ A page in this batch failed: ${result.reason?.message}`);
-                    }
+                for (const data of batchResults) {
+                    allPackages = allPackages.concat(data);
                 }
 
                 if (page > lastPage) hasMore = false;
 
-                // Small polite delay between batches (300ms instead of 3000ms)
-                if (hasMore) await new Promise(resolve => setTimeout(resolve, 300));
+                // Polite delay between batches to respect rate limits
+                if (hasMore) await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
             console.log(`✅ Fetched ${allPackages.length} packages total.`);
