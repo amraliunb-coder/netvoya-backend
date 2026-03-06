@@ -790,14 +790,14 @@ app.get('/api/admin/clients', async (_req: Request, res: Response) => {
         const clientData = await Promise.all(partners.map(async (partner) => {
             const partnerId = partner._id.toString();
 
-            // Inventory stats
+            // Inventory stats (available and assigned come from buckets)
             const buckets = await InventoryBucket.find({ partner_id: partnerId }).lean();
-            const totalEsims = buckets.reduce((sum, b) => sum + b.total_purchased, 0);
             const assignedEsims = buckets.reduce((sum, b) => sum + b.assigned_count, 0);
             const availableEsims = buckets.reduce((sum, b) => sum + b.available_count, 0);
 
             // Revenue stats from orders
             const orders = await Order.find({ partner_id: partnerId }).lean();
+            const totalTokensPurchased = orders.reduce((sum, o) => sum + (o.totalTokens || 0), 0);
             const totalRevenue = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
             const totalOrders = orders.length;
             const lastOrder = orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
@@ -816,7 +816,7 @@ app.get('/api/admin/clients', async (_req: Request, res: Response) => {
                 hasApiKey,
                 webhookUrl: partner.webhookUrl || null,
                 inventory: {
-                    total: totalEsims,
+                    total: totalTokensPurchased,
                     assigned: assignedEsims,
                     available: availableEsims,
                     packageCount: buckets.length,
@@ -826,7 +826,7 @@ app.get('/api/admin/clients', async (_req: Request, res: Response) => {
                     orderCount: totalOrders,
                     lastOrderAt: lastOrder?.createdAt || null,
                 },
-                status: totalEsims > 0 || hasApiKey ? 'Active' : 'Inactive',
+                status: totalTokensPurchased > 0 || hasApiKey ? 'Active' : 'Inactive',
             };
         }));
 
