@@ -778,6 +778,68 @@ app.get('/api/admin/profiles', async (req: Request, res: Response) => {
     }
 });
 
+// 11.5.5 Admin: Get All Clients (Partners) with aggregated stats
+app.get('/api/admin/clients', async (_req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+
+        // 1. Get all partner users
+        const partners = await User.find({ role: 'partner' }, '-password').lean();
+
+        // 2. For each partner, aggregate inventory + revenue
+        const clientData = await Promise.all(partners.map(async (partner) => {
+            const partnerId = partner._id.toString();
+
+            // Inventory stats
+            const buckets = await InventoryBucket.find({ partner_id: partnerId }).lean();
+            const totalEsims = buckets.reduce((sum, b) => sum + b.total_purchased, 0);
+            const assignedEsims = buckets.reduce((sum, b) => sum + b.assigned_count, 0);
+            const availableEsims = buckets.reduce((sum, b) => sum + b.available_count, 0);
+
+            // Revenue stats from orders
+            const orders = await Order.find({ partner_id: partnerId }).lean();
+            const totalRevenue = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+            const totalOrders = orders.length;
+            const lastOrder = orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+            // API key status
+            const hasApiKey = !!partner.apiKey;
+
+            return {
+                _id: partner._id,
+                companyName: partner.companyName || partner.username,
+                contactName: [partner.firstName, partner.lastName].filter(Boolean).join(' ') || partner.username,
+                email: partner.email,
+                country: partner.country || '—',
+                city: partner.city || '—',
+                joinedAt: (partner as any).createdAt,
+                hasApiKey,
+                webhookUrl: partner.webhookUrl || null,
+                inventory: {
+                    total: totalEsims,
+                    assigned: assignedEsims,
+                    available: availableEsims,
+                    packageCount: buckets.length,
+                },
+                revenue: {
+                    total: totalRevenue,
+                    orderCount: totalOrders,
+                    lastOrderAt: lastOrder?.createdAt || null,
+                },
+                status: totalEsims > 0 || hasApiKey ? 'Active' : 'Inactive',
+            };
+        }));
+
+        // Sort: most revenue first
+        clientData.sort((a, b) => b.revenue.total - a.revenue.total);
+
+        res.json({ success: true, clients: clientData, total: clientData.length });
+    } catch (error: any) {
+        console.error('Clients Error:', error.message);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // 11.6 Admin: Manual Issue eSIM
 app.post('/api/admin/issue-esim', async (req: Request, res: Response) => {
     try {
