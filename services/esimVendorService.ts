@@ -94,52 +94,59 @@ class EsimVendorService extends EventEmitter {
         let allPackages: any[] = [];
         let page = 1;
         let hasMore = true;
+        let lastPage = 1;
 
         try {
-            while (hasMore) {
-                try {
-                    console.log(`   Fetching page ${page}...`);
-                    const response = await axios.get(`${API_BASE_URL}/packages?page=${page}`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+            // First request to discover total pages
+            console.log(`   Fetching page 1 (discovery)...`);
+            const firstResponse = await axios.get(`${API_BASE_URL}/packages?page=1`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const firstData = firstResponse.data?.data || [];
+            allPackages = allPackages.concat(firstData);
+            const firstMeta = firstResponse.data?.meta;
+            if (firstMeta) {
+                lastPage = firstMeta.lastPage || 1;
+                hasMore = firstMeta.currentPage < lastPage;
+            } else {
+                hasMore = false;
+            }
+            page = 2;
 
-                    // Extract data
-                    const data = response.data?.data || [];
-                    allPackages = allPackages.concat(data);
+            console.log(`   Total pages to fetch: ${lastPage}`);
 
-                    // Check pagination keys (camelCase)
-                    const meta = response.data?.meta;
-                    if (meta && meta.currentPage < meta.lastPage) {
-                        page++;
-                    } else {
-                        hasMore = false;
-                    }
-                } catch (error: any) {
-                    // Retry once on 401
-                    if (error.response?.status === 401) {
-                        console.log(`🔄 Token expired at page ${page}, re-login...`);
-                        this.token = null;
-                        const newToken = await this.getToken();
-                        // Retry current page
-                        const retryResponse = await axios.get(`${API_BASE_URL}/packages?page=${page}`, {
-                            headers: { 'Authorization': `Bearer ${newToken}` }
-                        });
-                        const data = retryResponse.data?.data || [];
+            // Fetch remaining pages in batches of 5 (parallel) to stay within timeout
+            const BATCH_SIZE = 5;
+            while (hasMore && page <= lastPage) {
+                const batch = [];
+                for (let i = 0; i < BATCH_SIZE && page <= lastPage; i++, page++) {
+                    batch.push(page);
+                }
+
+                console.log(`   Fetching pages ${batch[0]}–${batch[batch.length - 1]} in parallel...`);
+
+                const batchResults = await Promise.allSettled(
+                    batch.map(p =>
+                        axios.get(`${API_BASE_URL}/packages?page=${p}`, {
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            timeout: 15000
+                        })
+                    )
+                );
+
+                for (const result of batchResults) {
+                    if (result.status === 'fulfilled') {
+                        const data = result.value.data?.data || [];
                         allPackages = allPackages.concat(data);
-
-                        const meta = retryResponse.data?.meta;
-                        if (meta && meta.currentPage < meta.lastPage) {
-                            page++;
-                        } else {
-                            hasMore = false;
-                        }
                     } else {
-                        throw error;
+                        console.warn(`⚠️ A page in this batch failed: ${result.reason?.message}`);
                     }
                 }
 
-                // Rate limiting to avoid 429
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                if (page > lastPage) hasMore = false;
+
+                // Small polite delay between batches (300ms instead of 3000ms)
+                if (hasMore) await new Promise(resolve => setTimeout(resolve, 300));
             }
 
             console.log(`✅ Fetched ${allPackages.length} packages total.`);
