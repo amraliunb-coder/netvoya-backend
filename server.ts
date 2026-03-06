@@ -818,7 +818,7 @@ app.get('/api/admin/clients', async (_req: Request, res: Response) => {
                 hasApiKey,
                 webhookUrl: partner.webhookUrl || null,
                 inventory: {
-                    total: totalTokensPurchased,
+                    total: buckets.reduce((sum, b) => sum + b.total_purchased, 0),
                     assigned: assignedEsims,
                     available: availableEsims,
                     packageCount: buckets.length,
