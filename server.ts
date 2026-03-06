@@ -840,6 +840,25 @@ app.get('/api/admin/clients', async (_req: Request, res: Response) => {
     }
 });
 
+// 11.5.6 Admin: Get Partner Orders for Transaction History
+app.get('/api/admin/clients/:id/orders', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const partnerId = req.params.id;
+
+        // Find all orders for this partner, sorted by newest first
+        const orders = await Order.find({ partner_id: partnerId })
+            .select('_id createdAt totalTokens totalAmount status')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        res.json({ success: true, orders, total: orders.length });
+    } catch (error: any) {
+        console.error('Client Orders Error:', error.message);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // 11.6 Admin: Manual Issue eSIM
 app.post('/api/admin/issue-esim', async (req: Request, res: Response) => {
     try {
