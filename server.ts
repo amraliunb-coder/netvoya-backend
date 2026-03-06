@@ -796,11 +796,13 @@ app.get('/api/admin/clients', async (_req: Request, res: Response) => {
             const availableEsims = buckets.reduce((sum, b) => sum + b.available_count, 0);
 
             // Revenue stats from orders
-            const orders = await Order.find({ partner_id: partnerId }).lean();
-            const totalTokensPurchased = orders.reduce((sum, o) => sum + (o.totalTokens || 0), 0);
-            const totalRevenue = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-            const totalOrders = orders.length;
-            const lastOrder = orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+            const allOrders = await Order.find({ partner_id: partnerId }).lean();
+            const completedOrders = allOrders.filter((o: any) => o.status === 'Completed');
+
+            const totalTokensPurchased = completedOrders.reduce((sum, o) => sum + (o.totalTokens || 0), 0);
+            const totalRevenue = completedOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+            const totalOrders = completedOrders.length;
+            const lastOrder = completedOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
 
             // API key status
             const hasApiKey = !!partner.apiKey;
