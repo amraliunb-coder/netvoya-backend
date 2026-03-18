@@ -1044,47 +1044,56 @@ app.get('/api/partner/activations', async (req: Request, res: Response) => {
             .sort({ updatedAt: -1 })
             .populate('bucket_id', 'package_name region');
 
-        const updatedProfiles = await Promise.all(recentProfiles.map(async (profile) => {
-            try {
-                // Sync status with Vendor (or Mock)
-                // This triggers the Demo Mode mock in esimVendorService for the specific ICCIDs
-                const vendorData = await esimVendorService.getEsimDetailsByIccid(profile.iccid);
+        const updatedProfiles = [];
+        const CHUNK_SIZE = 10;
+        
+        // Sync in chunks to prevent Vercel timeouts and Vendor rate limits
+        for (let i = 0; i < recentProfiles.length; i += CHUNK_SIZE) {
+            const chunk = recentProfiles.slice(i, i + CHUNK_SIZE);
+            const chunkResults = await Promise.all(chunk.map(async (profile) => {
+                try {
+                    // Sync status with Vendor (or Mock)
+                    const vendorData = await esimVendorService.getEsimDetailsByIccid(profile.iccid);
 
-                if (vendorData && vendorData.status) {
-                    let newStatus = vendorData.status === 'Active' ? 'Active' : 'Assigned';
+                    if (vendorData && vendorData.status) {
+                        let newStatus = vendorData.status === 'Active' ? 'Active' : 'Assigned';
 
-                    // Ensure the token has data usage before remaining Active
-                    if (newStatus === 'Active' && vendorData.balance) {
-                        const parseVal = (str: string) => {
-                            if (!str) return 0;
-                            const num = parseFloat(str) || 0;
-                            if (str.toUpperCase().includes('GB')) return num * 1024;
-                            if (str.toUpperCase().includes('MB')) return num;
-                            return num;
-                        };
+                        // Ensure the token has data usage before remaining Active
+                        if (newStatus === 'Active' && vendorData.balance) {
+                            const parseVal = (str: string) => {
+                                if (!str) return 0;
+                                const num = parseFloat(str) || 0;
+                                if (str.toUpperCase().includes('GB')) return num * 1024;
+                                if (str.toUpperCase().includes('MB')) return num;
+                                return num;
+                            };
 
-                        const initial = parseVal(vendorData.balance.initial_data);
-                        const remaining = parseVal(vendorData.balance.remaining_data);
+                            const initial = parseVal(vendorData.balance.initial_data);
+                            const remaining = parseVal(vendorData.balance.remaining_data);
 
-                        // If no data has been used, keep it as Assigned
-                        // We check remaining >= initial, accounting for possible minor discrepancies or MB/GB conversions rounding up.
-                        if (initial > 0 && remaining >= initial) {
-                            newStatus = 'Assigned';
+                            if (initial > 0 && remaining >= initial) {
+                                newStatus = 'Assigned';
+                            }
+                        }
+
+                        if (profile.status !== newStatus) {
+                            profile.status = newStatus as any; // Cast to enum
+                            await profile.save();
+                            console.log(`🔄 Synced status for ${profile.iccid}: ${newStatus}`);
                         }
                     }
-
-                    if (profile.status !== newStatus) {
-                        profile.status = newStatus as any; // Cast to enum
-                        await profile.save();
-                        console.log(`🔄 Synced status for ${profile.iccid}: ${newStatus}`);
-                    }
+                    return profile;
+                } catch (err) {
+                    console.warn(`⚠️ Failed to sync status for ${profile.iccid}:`, err);
+                    return profile; // Return stale if sync fails
                 }
-                return profile;
-            } catch (err) {
-                console.warn(`⚠️ Failed to sync status for ${profile.iccid}:`, err);
-                return profile; // Return stale if sync fails
+            }));
+            updatedProfiles.push(...chunkResults);
+
+            if (i + CHUNK_SIZE < recentProfiles.length) {
+                await new Promise(resolve => setTimeout(resolve, 300));
             }
-        }));
+        }
 
         res.json({ success: true, activations: updatedProfiles });
     } catch (error: any) {
@@ -1475,31 +1484,43 @@ app.post('/api/esim/usage/batch', async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'iccids array required' });
         }
 
-        // Limit to 20 ICCIDs per batch to avoid overloading vendor API
-        const limited = iccids.slice(0, 20);
+        // Limit to 100 ICCIDs per batch to avoid overloading vendor API too much, process in chunks
+        const limited = iccids.slice(0, 100);
 
-        const results = await Promise.allSettled(
-            limited.map(async (iccid: string) => {
-                try {
-                    const details = await esimVendorService.getEsimDetailsByIccid(iccid);
-                    return {
-                        iccid,
-                        status: details.status || 'Unknown',
-                        initial_data: details.balance?.initial_data || null,
-                        remaining_data: details.balance?.remaining_data || null,
-                        expiration_date: details.balance?.expiration_date || null
-                    };
-                } catch {
-                    return {
-                        iccid,
-                        status: 'Unknown',
-                        initial_data: null,
-                        remaining_data: null,
-                        expiration_date: null
-                    };
-                }
-            })
-        );
+        const CHUNK_SIZE = 10;
+        const results = [];
+
+        for (let i = 0; i < limited.length; i += CHUNK_SIZE) {
+            const chunk = limited.slice(i, i + CHUNK_SIZE);
+            const chunkResults = await Promise.allSettled(
+                chunk.map(async (iccid: string) => {
+                    try {
+                        const details = await esimVendorService.getEsimDetailsByIccid(iccid);
+                        return {
+                            iccid,
+                            status: details.status || 'Unknown',
+                            initial_data: details.balance?.initial_data || null,
+                            remaining_data: details.balance?.remaining_data || null,
+                            expiration_date: details.balance?.expiration_date || null
+                        };
+                    } catch (err: any) {
+                        return {
+                            iccid,
+                            status: 'Unknown',
+                            initial_data: null,
+                            remaining_data: null,
+                            expiration_date: null
+                        };
+                    }
+                })
+            );
+            results.push(...chunkResults);
+            
+            // basic delay between chunks to avoid vendor block
+            if (i + CHUNK_SIZE < limited.length) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+        }
 
         const usageMap: Record<string, any> = {};
         results.forEach((result) => {
