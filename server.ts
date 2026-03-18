@@ -1044,7 +1044,7 @@ app.get('/api/partner/activations', async (req: Request, res: Response) => {
             .sort({ updatedAt: -1 })
             .populate('bucket_id', 'package_name region');
 
-        const updatedProfiles = [];
+        const updatedProfiles: any[] = [];
         const CHUNK_SIZE = 10;
         
         // Sync in chunks to prevent Vercel timeouts and Vendor rate limits
@@ -1054,6 +1054,9 @@ app.get('/api/partner/activations', async (req: Request, res: Response) => {
                 try {
                     // Sync status with Vendor (or Mock)
                     const vendorData = await esimVendorService.getEsimDetailsByIccid(profile.iccid);
+                    
+                    // Convert to plain object so we can attach usage data
+                    const profileObj = profile.toObject();
 
                     if (vendorData && vendorData.status) {
                         let newStatus = vendorData.status === 'Active' ? 'Active' : 'Assigned';
@@ -1079,13 +1082,25 @@ app.get('/api/partner/activations', async (req: Request, res: Response) => {
                         if (profile.status !== newStatus) {
                             profile.status = newStatus as any; // Cast to enum
                             await profile.save();
+                            profileObj.status = newStatus;
                             console.log(`🔄 Synced status for ${profile.iccid}: ${newStatus}`);
                         }
                     }
-                    return profile;
+                    
+                    // Attach usage data from the vendor response so frontend
+                    // doesn't need to make a second batch API call
+                    if (vendorData && vendorData.balance) {
+                        profileObj.usage = {
+                            initial_data: vendorData.balance.initial_data || null,
+                            remaining_data: vendorData.balance.remaining_data || null,
+                            expiration_date: vendorData.balance.expiration_date || null
+                        };
+                    }
+                    
+                    return profileObj;
                 } catch (err) {
                     console.warn(`⚠️ Failed to sync status for ${profile.iccid}:`, err);
-                    return profile; // Return stale if sync fails
+                    return profile.toObject(); // Return stale if sync fails
                 }
             }));
             updatedProfiles.push(...chunkResults);
