@@ -9,6 +9,11 @@ export interface IEsimProfile extends Document {
     assigned_to_name?: string;
     assigned_to_email?: string;
     assignment_date?: Date;
+    // Email delivery audit
+    email_sent?: boolean;
+    email_sent_at?: Date;
+    email_message_id?: string;
+    email_error?: string;
 }
 
 const EsimProfileSchema: Schema = new Schema({
@@ -24,6 +29,11 @@ const EsimProfileSchema: Schema = new Schema({
     assigned_to_name: { type: String },
     assigned_to_email: { type: String },
     assignment_date: { type: Date },
+    // Email delivery audit
+    email_sent: { type: Boolean },
+    email_sent_at: { type: Date },
+    email_message_id: { type: String },
+    email_error: { type: String },
 }, {
     timestamps: true
 });

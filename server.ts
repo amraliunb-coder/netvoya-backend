@@ -1180,6 +1180,14 @@ app.post('/api/inventory/:bucketId/assign', async (req: Request, res: Response) 
             durationDays: bucket.duration_days
         });
 
+        // Persist email delivery status back to the profile for audit trail
+        await EsimProfile.findByIdAndUpdate(profile._id, {
+            email_sent: emailResult.success,
+            email_sent_at: emailResult.success ? new Date() : undefined,
+            email_message_id: emailResult.success ? emailResult.messageId : undefined,
+            email_error: emailResult.success ? undefined : emailResult.error,
+        });
+
         if (!emailResult.success) {
             console.warn('⚠️ Assignment saved but email failed:', emailResult.error);
         }

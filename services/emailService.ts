@@ -131,11 +131,13 @@ interface AssignmentDetails {
     region: string;
     dataLimit: number;
     durationDays: number;
+    cc?: string; // Optional override; falls back to ESIM_AUDIT_CC_EMAIL env var
 }
 
 export const sendEsimAssignmentEmail = async (details: AssignmentDetails) => {
     try {
-        const { email, name, iccid, activationCode, qrCodeUrl, packageName, region, dataLimit, durationDays } = details;
+        const { email, name, iccid, activationCode, qrCodeUrl, packageName, region, dataLimit, durationDays, cc } = details;
+        const auditCc = cc || process.env.ESIM_AUDIT_CC_EMAIL || 'Khairy@sahara-egypt.com';
 
         console.log(`📧 Sending eSIM assignment email to ${email}...`);
 
@@ -195,13 +197,20 @@ export const sendEsimAssignmentEmail = async (details: AssignmentDetails) => {
         `;
 
         // Send mail
-        const info = await transporter.sendMail({
+        const mailOptions: any = {
             from: process.env.EMAIL_FROM || '"NetVoya Admin" <admin@netvoya.com>',
             to: email,
             subject: `📲 Your NetVoya eSIM is Ready: ${packageName}`,
             text: `Hello ${name}. Here is your eSIM for ${region}. Manual Code: ${activationCode}. \n\n${installInstructions}`,
             html: htmlContent,
-        });
+        };
+
+        if (auditCc) {
+            mailOptions.cc = auditCc;
+            console.log(`📋 CC audit copy will be sent to: ${auditCc}`);
+        }
+
+        const info = await transporter.sendMail(mailOptions);
 
         console.log("✅ Assignment email sent: %s", info.messageId);
         return { success: true, messageId: info.messageId };
