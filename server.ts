@@ -1205,6 +1205,57 @@ app.post('/api/inventory/:bucketId/assign', async (req: Request, res: Response) 
     }
 });
 
+// 13.5 Resend QR Code Email
+app.post('/api/esim/:profileId/resend', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const { profileId } = req.params;
+
+        const profile = await EsimProfile.findById(profileId);
+        if (!profile) {
+            return res.status(404).json({ success: false, message: 'Profile not found.' });
+        }
+        if (!profile.assigned_to_email || !profile.assigned_to_name) {
+            return res.status(400).json({ success: false, message: 'Profile has no assigned recipient to resend to.' });
+        }
+
+        const bucket = await InventoryBucket.findById(profile.bucket_id);
+        if (!bucket) {
+            return res.status(404).json({ success: false, message: 'Bucket not found.' });
+        }
+
+        console.log(`🔁 Resending QR code email to ${profile.assigned_to_email} for ICCID: ${profile.iccid}`);
+
+        const emailResult = await emailService.sendEsimAssignmentEmail({
+            email: profile.assigned_to_email,
+            name: profile.assigned_to_name,
+            iccid: profile.iccid,
+            activationCode: profile.activation_code,
+            qrCodeUrl: profile.qr_code_url,
+            packageName: bucket.package_name,
+            region: bucket.region,
+            dataLimit: bucket.data_limit_gb,
+            durationDays: bucket.duration_days,
+        });
+
+        // Update audit fields
+        await EsimProfile.findByIdAndUpdate(profileId, {
+            email_sent: emailResult.success,
+            email_sent_at: emailResult.success ? new Date() : undefined,
+            email_message_id: emailResult.success ? emailResult.messageId : undefined,
+            email_error: emailResult.success ? undefined : emailResult.error,
+        });
+
+        if (!emailResult.success) {
+            return res.status(500).json({ success: false, message: `Resend failed: ${emailResult.error}` });
+        }
+
+        res.json({ success: true, message: `QR code resent to ${profile.assigned_to_email}.` });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // 14. Bulk Download QR Codes (Mock)
 app.get('/api/inventory/:bucketId/download', async (req: Request, res: Response) => {
     try {
