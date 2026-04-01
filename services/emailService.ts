@@ -39,7 +39,7 @@ export const sendInventoryRequestEmail = async (details: RequestDetails) => {
         const { totalTokens, totalAmount, discountLabel, packages, partnerInfo } = details;
 
         // Target email
-        const targetEmail = process.env.ADMIN_EMAIL || 'amr.ali.mme@gmail.com';
+        const targetEmail = process.env.ADMIN_EMAIL || 'hello@netvoya.com';
 
         console.log(`📧 Sending inventory request email to ${targetEmail}...`);
 
@@ -104,7 +104,7 @@ export const sendInventoryRequestEmail = async (details: RequestDetails) => {
 
         // Send mail with defined transport object
         const info = await transporter.sendMail({
-            from: process.env.EMAIL_FROM || '"NetVoya Admin" <admin@netvoya.com>', // sender address
+            from: process.env.EMAIL_FROM || '"NetVoya Admin" <hello@netvoya.com>', // sender address
             to: targetEmail, // list of receivers
             subject: `📦 New Inventory Request: ${totalTokens} Tokens - $${totalAmount}`, // Subject line
             text: `New Inventory Request from ${partnerInfo?.name || 'Partner'}. Total Tokens: ${totalTokens}. Total Amount: $${totalAmount}. Please check the dashboard for details.`, // plain text body
@@ -198,7 +198,7 @@ export const sendEsimAssignmentEmail = async (details: AssignmentDetails) => {
 
         // Send mail
         const mailOptions: any = {
-            from: process.env.EMAIL_FROM || '"NetVoya Admin" <admin@netvoya.com>',
+            from: process.env.EMAIL_FROM || '"NetVoya Admin" <hello@netvoya.com>',
             to: email,
             subject: `📲 Your NetVoya eSIM is Ready: ${packageName}`,
             text: `Hello ${name}. Here is your eSIM for ${region}. Manual Code: ${activationCode}. \n\n${installInstructions}`,
