@@ -1256,6 +1256,35 @@ app.post('/api/esim/:profileId/resend', async (req: Request, res: Response) => {
     }
 });
 
+// 13.6 Update Assigned Email
+app.put('/api/esim/:profileId/email', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const { profileId } = req.params;
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ success: false, message: 'New email is required.' });
+        }
+
+        const profile = await EsimProfile.findById(profileId);
+        if (!profile) {
+            return res.status(404).json({ success: false, message: 'Profile not found.' });
+        }
+
+        if (profile.status !== 'Assigned' && profile.status !== 'Active') {
+            return res.status(400).json({ success: false, message: 'Cannot edit email for unassigned profile.' });
+        }
+
+        profile.assigned_to_email = email;
+        await profile.save();
+
+        res.json({ success: true, message: 'Assigned email updated successfully.', profile });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // 14. Bulk Download QR Codes (Mock)
 app.get('/api/inventory/:bucketId/download', async (req: Request, res: Response) => {
     try {
