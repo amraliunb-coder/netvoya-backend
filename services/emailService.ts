@@ -137,7 +137,7 @@ interface AssignmentDetails {
 export const sendEsimAssignmentEmail = async (details: AssignmentDetails) => {
     try {
         const { email, name, iccid, activationCode, qrCodeUrl, packageName, region, dataLimit, durationDays, cc } = details;
-        const auditCc = cc || process.env.ESIM_AUDIT_CC_EMAIL || 'Khairy@sahara-egypt.com';
+        const auditCc = cc || process.env.ESIM_AUDIT_CC_EMAIL;
 
         console.log(`📧 Sending eSIM assignment email to ${email}...`);
 
