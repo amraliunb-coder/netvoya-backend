@@ -614,7 +614,11 @@ app.post('/api/vendor/sync', async (_req: Request, res: Response) => {
         let inserted = 0;
 
         for (const pkg of vendorPackages) {
-            const region = (pkg.coverage && pkg.coverage.length > 0) ? pkg.coverage[0].country_name : 'Global';
+            // Extract region from package name (e.g., "eSimCard 1GB Europe" → "Europe")
+            // or fallback to 'Global'
+            const nameParts = (pkg.name || '').split(' ');
+            const region = nameParts.length > 0 ? nameParts[nameParts.length - 1] : 'Global';
+            const price = typeof pkg.price === 'string' ? parseFloat(pkg.price) : (pkg.price || 0);
 
             // 1. Try to find by ID
             let existing = await EsimProductMapping.findOne({ vendor_package_id: pkg.id });
@@ -629,7 +633,7 @@ app.post('/api/vendor/sync', async (_req: Request, res: Response) => {
             }
 
             if (existing) {
-                existing.wholesale_cost = pkg.price;
+                existing.wholesale_cost = price;
                 existing.name = pkg.name;
                 existing.region = region;
                 existing.data_limit_gb = pkg.data_quantity;
@@ -640,8 +644,8 @@ app.post('/api/vendor/sync', async (_req: Request, res: Response) => {
             } else {
                 await EsimProductMapping.create({
                     vendor_package_id: pkg.id,
-                    retail_price: Number((pkg.price * 1.5).toFixed(2)),
-                    wholesale_cost: pkg.price,
+                    retail_price: Number((price * 1.5).toFixed(2)),
+                    wholesale_cost: price,
                     name: pkg.name,
                     region: region,
                     data_limit_gb: pkg.data_quantity,
@@ -1272,8 +1276,8 @@ app.put('/api/esim/:profileId/email', async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Profile not found.' });
         }
 
-        if (profile.status !== 'Assigned' && profile.status !== 'Active') {
-            return res.status(400).json({ success: false, message: 'Cannot edit email for unassigned profile.' });
+        if (profile.status !== 'Assigned') {
+            return res.status(400).json({ success: false, message: 'Cannot edit email for active or unassigned profiles.' });
         }
 
         profile.assigned_to_email = email;
@@ -1812,6 +1816,184 @@ app.patch('/api/user/change-password', async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error('Change Password Error:', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+// =============================================================================
+// VENDOR API PROXY ROUTES (New API Endpoints)
+// =============================================================================
+
+// V1. Get Available Countries
+app.get('/api/vendor/countries', async (_req: Request, res: Response) => {
+    try {
+        const countries = await esimVendorService.getCountries();
+        res.json({ success: true, countries });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V2. Get Packages by Country
+app.get('/api/vendor/countries/:id/packages', async (req: Request, res: Response) => {
+    try {
+        const countryId = parseInt(req.params.id);
+        const packageType = req.query.package_type as string | undefined;
+        const data = await esimVendorService.getPackagesByCountry(countryId, packageType);
+        res.json({ success: true, ...data });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V3. Get Available Continents
+app.get('/api/vendor/continents', async (_req: Request, res: Response) => {
+    try {
+        const continents = await esimVendorService.getContinents();
+        res.json({ success: true, continents });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V4. Get Packages by Continent
+app.get('/api/vendor/continents/:id/packages', async (req: Request, res: Response) => {
+    try {
+        const continentId = parseInt(req.params.id);
+        const packageType = req.query.package_type as string | undefined;
+        const data = await esimVendorService.getPackagesByContinent(continentId, packageType);
+        res.json({ success: true, ...data });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V5. Get Global Packages
+app.get('/api/vendor/packages/global', async (req: Request, res: Response) => {
+    try {
+        const packageType = (req.query.package_type as string) || 'DATA-ONLY';
+        const data = await esimVendorService.getGlobalPackages(packageType);
+        res.json({ success: true, ...data });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V6. Get Package Details
+app.get('/api/vendor/packages/:id', async (req: Request, res: Response) => {
+    try {
+        const detail = await esimVendorService.getPackageDetail(req.params.id);
+        res.json({ success: true, package: detail });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V7. Check Topup Availability
+app.post('/api/vendor/can-topup', async (req: Request, res: Response) => {
+    try {
+        const { imei } = req.body;
+        if (!imei) return res.status(400).json({ success: false, message: 'imei required' });
+        const available = await esimVendorService.canTopupEsim(imei);
+        res.json({ success: true, topup_available: available });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V8. Purchase Package (Data-Only)
+app.post('/api/vendor/purchase', async (req: Request, res: Response) => {
+    try {
+        const { imei, package_type_id } = req.body;
+        if (!imei || !package_type_id) return res.status(400).json({ success: false, message: 'imei and package_type_id required' });
+        const result = await esimVendorService.purchasePackage(imei, package_type_id);
+        res.json({ success: true, data: result });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V9. Purchase Data+Voice+SMS Package
+app.post('/api/vendor/purchase/voice-sms', async (req: Request, res: Response) => {
+    try {
+        const { imei, package_type_id } = req.body;
+        if (!imei || !package_type_id) return res.status(400).json({ success: false, message: 'imei and package_type_id required' });
+        const result = await esimVendorService.purchaseDataVoiceSmsPackage(imei, package_type_id);
+        res.json({ success: true, data: result });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V10. Purchase Package (Async)
+app.post('/api/vendor/purchase/async', async (req: Request, res: Response) => {
+    try {
+        const { imei, package_type_id } = req.body;
+        if (!imei || !package_type_id) return res.status(400).json({ success: false, message: 'imei and package_type_id required' });
+        const result = await esimVendorService.purchasePackageAsync(imei, package_type_id);
+        res.json({ success: true, data: result });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V11. Get My Bundles
+app.get('/api/vendor/my-bundles', async (_req: Request, res: Response) => {
+    try {
+        const data = await esimVendorService.getMyBundles();
+        res.json({ success: true, ...data });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V12. Get Bundle Detail
+app.get('/api/vendor/bundles/:id', async (req: Request, res: Response) => {
+    try {
+        const data = await esimVendorService.getBundleDetail(req.params.id);
+        res.json({ success: true, data });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V13. Get My eSIMs
+app.get('/api/vendor/my-esims', async (_req: Request, res: Response) => {
+    try {
+        const data = await esimVendorService.getMyEsims();
+        res.json({ success: true, ...data });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V14. Get eSIM Detail
+app.get('/api/vendor/my-esims/:id', async (req: Request, res: Response) => {
+    try {
+        const data = await esimVendorService.getEsimDetail(req.params.id);
+        res.json({ success: true, data });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V15. Get Order Detail
+app.get('/api/vendor/orders/:id', async (req: Request, res: Response) => {
+    try {
+        const orderId = parseInt(req.params.id);
+        const data = await esimVendorService.getOrderDetail(orderId);
+        res.json({ success: true, data });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// V16. Get Network Coverages
+app.get('/api/vendor/network-coverages', async (_req: Request, res: Response) => {
+    try {
+        const coverages = await esimVendorService.getNetworkCoverages();
+        res.json({ success: true, coverages });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
