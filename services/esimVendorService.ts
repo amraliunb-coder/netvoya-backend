@@ -698,13 +698,20 @@ class EsimVendorService extends EventEmitter {
             if (response.data && response.data.status && response.data.data) {
                 const vendorData = response.data.data;
 
+                // Safely build a display string like "1 GB" — returns null if data is missing/zero
+                const toDataString = (qty: any, unit: any): string | null => {
+                    const num = parseFloat(qty);
+                    if (isNaN(num) || num <= 0 || !unit || unit === 'null' || unit === 'undefined') return null;
+                    return `${num} ${unit}`;
+                };
+
                 // Map to our internal structure used by server.ts and frontend
                 return {
                     iccid: iccid,
                     status: 'Active', // If it has usage, it's Active
                     balance: {
-                        initial_data: `${vendorData.initial_data_quantity} ${vendorData.initial_data_unit}`,
-                        remaining_data: `${vendorData.rem_data_quantity} ${vendorData.rem_data_unit}`,
+                        initial_data: toDataString(vendorData.initial_data_quantity, vendorData.initial_data_unit),
+                        remaining_data: toDataString(vendorData.rem_data_quantity, vendorData.rem_data_unit),
                         // Vendor doesn't provide expiration in this specific endpoint, 
                         // we'll leave it null for server.ts to handle
                         expiration_date: null

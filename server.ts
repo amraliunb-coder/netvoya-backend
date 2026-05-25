@@ -1093,10 +1093,12 @@ app.get('/api/partner/activations', async (req: Request, res: Response) => {
                     
                     // Attach usage data from the vendor response so frontend
                     // doesn't need to make a second batch API call
+                    // isValidDataStr guards against bogus strings like "null undefined"
+                    const isValidDataStr = (s: any) => typeof s === 'string' && s.trim().length > 0 && !s.includes('null') && !s.includes('undefined');
                     if (vendorData && vendorData.balance) {
                         profileObj.usage = {
-                            initial_data: vendorData.balance.initial_data || null,
-                            remaining_data: vendorData.balance.remaining_data || null,
+                            initial_data: isValidDataStr(vendorData.balance.initial_data) ? vendorData.balance.initial_data : null,
+                            remaining_data: isValidDataStr(vendorData.balance.remaining_data) ? vendorData.balance.remaining_data : null,
                             expiration_date: vendorData.balance.expiration_date || null
                         };
                     }
@@ -1630,9 +1632,17 @@ app.post('/api/esim/usage/batch', async (req: Request, res: Response) => {
         }
 
         const usageMap: Record<string, any> = {};
+        const isValidDataStr = (s: any) => typeof s === 'string' && s.trim().length > 0 && !s.includes('null') && !s.includes('undefined');
         results.forEach((result) => {
             if (result.status === 'fulfilled') {
-                usageMap[result.value.iccid] = result.value;
+                const v = result.value;
+                // Only add to usageMap if at least one data field is valid
+                // This prevents 'Usage unavailable' from showing for fulfilled-but-empty vendor responses
+                usageMap[v.iccid] = {
+                    ...v,
+                    initial_data: isValidDataStr(v.initial_data) ? v.initial_data : null,
+                    remaining_data: isValidDataStr(v.remaining_data) ? v.remaining_data : null,
+                };
             }
         });
 
