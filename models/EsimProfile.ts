@@ -14,6 +14,9 @@ export interface IEsimProfile extends Document {
     email_sent_at?: Date;
     email_message_id?: string;
     email_error?: string;
+    // Low Data Alert
+    low_data_alert_sent?: boolean;
+    low_data_alert_sent_at?: Date;
 }
 
 const EsimProfileSchema: Schema = new Schema({
@@ -34,6 +37,9 @@ const EsimProfileSchema: Schema = new Schema({
     email_sent_at: { type: Date },
     email_message_id: { type: String },
     email_error: { type: String },
+    // Low Data Alert
+    low_data_alert_sent: { type: Boolean, default: false },
+    low_data_alert_sent_at: { type: Date },
 }, {
     timestamps: true
 });

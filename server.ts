@@ -84,6 +84,7 @@ import Notification from './models/Notification.js';
 import Order from './models/Order.js';
 import esimVendorService from './services/esimVendorService.js';
 import emailService from './services/emailService.js';
+import alertService from './services/alertService.js';
 
 // Prioritize the MongoDB integration's variable, fallback to manual MONGO_URI
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || '';
@@ -451,6 +452,12 @@ app.get('/api/packages', async (req: Request, res: Response) => {
 app.get('/api/vendor/balance', async (_req: Request, res: Response) => {
     try {
         const balance = await esimVendorService.getBalance();
+
+        // Automated Alerting: check if vendor balance <= $20
+        alertService.checkVendorBalanceAlert(balance).catch(err => {
+            console.error('⚠️ Error during vendor balance alert check:', err.message);
+        });
+
         res.json({ success: true, balance });
     } catch (error: any) {
         res.status(500).json({ success: false, message: error.message });
@@ -682,6 +689,11 @@ app.post('/api/vendor/login', async (_req: Request, res: Response) => {
 app.post('/api/orders/esim', async (_req: Request, res: Response) => {
     try {
         const balance = await esimVendorService.getBalance();
+
+        // Automated Alerting: check if vendor balance <= $20
+        alertService.checkVendorBalanceAlert(balance).catch(err => {
+            console.error('⚠️ Error during checkout balance alert check:', err.message);
+        });
 
         if (balance <= 0) {
             return res.status(503).json({
@@ -1101,6 +1113,11 @@ app.get('/api/partner/activations', async (req: Request, res: Response) => {
                             remaining_data: isValidDataStr(vendorData.balance.remaining_data) ? vendorData.balance.remaining_data : null,
                             expiration_date: vendorData.balance.expiration_date || null
                         };
+
+                        // Automated Alerting: check if eSIM remaining data <= 20%
+                        alertService.checkEsimLowDataAlert(profile._id.toString(), vendorData.balance).catch(err => {
+                            console.error(`⚠️ Error during activations low-data warning check for ${profile.iccid}:`, err.message);
+                        });
                     }
                     
                     return profileObj;
@@ -1638,11 +1655,20 @@ app.post('/api/esim/usage/batch', async (req: Request, res: Response) => {
                 const v = result.value;
                 // Only add to usageMap if at least one data field is valid
                 // This prevents 'Usage unavailable' from showing for fulfilled-but-empty vendor responses
+                const initial_data = isValidDataStr(v.initial_data) ? v.initial_data : null;
+                const remaining_data = isValidDataStr(v.remaining_data) ? v.remaining_data : null;
                 usageMap[v.iccid] = {
                     ...v,
-                    initial_data: isValidDataStr(v.initial_data) ? v.initial_data : null,
-                    remaining_data: isValidDataStr(v.remaining_data) ? v.remaining_data : null,
+                    initial_data,
+                    remaining_data,
                 };
+
+                // Automated Alerting: check if eSIM remaining data <= 20%
+                if (initial_data && remaining_data) {
+                    alertService.checkEsimLowDataAlert(v.iccid, { initial_data, remaining_data }).catch(err => {
+                        console.error(`⚠️ Error during batch low-data warning check for ${v.iccid}:`, err.message);
+                    });
+                }
             }
         });
 
