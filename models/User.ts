@@ -12,7 +12,9 @@ export interface IUser extends Document {
     zip?: string;
     country?: string;
     vatId?: string;
-    role: 'partner' | 'admin';
+    role: 'partner' | 'admin' | 'client';
+    affiliateCode?: string;
+    referredByAgency?: string;
     apiKey?: string;
     webhookUrl?: string;
     requiresPasswordChange?: boolean;
@@ -31,7 +33,9 @@ const UserSchema: Schema = new Schema({
     zip: { type: String },
     country: { type: String },
     vatId: { type: String },
-    role: { type: String, enum: ['partner', 'admin'], default: 'partner' }, // Default is 'partner'
+    role: { type: String, enum: ['partner', 'admin', 'client'], default: 'partner' },
+    affiliateCode: { type: String },
+    referredByAgency: { type: String },
     apiKey: { type: String },
     webhookUrl: { type: String },
     requiresPasswordChange: { type: Boolean, default: false }

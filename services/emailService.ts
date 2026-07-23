@@ -350,9 +350,206 @@ export const sendLowBalanceAlertEmail = async (details: {
     }
 };
 
+export interface ClientRequestDetails {
+    totalTokens: number;
+    totalAmount: number;
+    discountLabel?: string;
+    packages: {
+        name: string;
+        region: string;
+        quantity: number;
+        price: number;
+        total: number;
+    }[];
+    clientInfo: {
+        name?: string;
+        email: string;
+        phone?: string;
+    };
+    agencyInfo?: {
+        name?: string;
+        email?: string;
+        id?: string;
+    };
+}
+
+export const sendClientConfirmationEmail = async (details: ClientRequestDetails) => {
+    try {
+        const { totalTokens, totalAmount, discountLabel, packages, clientInfo, agencyInfo } = details;
+        console.log(`📧 Sending client confirmation email to ${clientInfo.email}...`);
+
+        const rows = packages.map(pkg => `
+            <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: 500;">${pkg.name}</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; color: #666;">${pkg.region}</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center; font-weight: bold;">${pkg.quantity}</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right; color: #666;">$${pkg.price.toFixed(2)}</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right; font-weight: bold; color: #0EA5E9;">$${pkg.total.toFixed(2)}</td>
+            </tr>
+        `).join('');
+
+        const htmlContent = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
+                <div style="text-align: center; margin-bottom: 25px;">
+                    <img src="https://res.cloudinary.com/drzid08rg/image/upload/d91fcd24-8cf6-4adf-b9df-7312622185a8_ihpxqo.png" alt="NetVoya Logo" style="height: 60px; margin-bottom: 10px;" />
+                    <h2 style="color: #0EA5E9; margin: 0; font-size: 22px;">eSIM Request Confirmation</h2>
+                    <p style="color: #6b7280; font-size: 14px; margin-top: 5px;">Thank you for your order via ${agencyInfo?.name || 'our Partner Agency'}!</p>
+                </div>
+
+                <div style="background-color: #f8fafc; padding: 18px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #0EA5E9;">
+                    <p style="margin: 4px 0; color: #334155; font-size: 14px;"><strong>Client Name:</strong> ${clientInfo.name || 'Customer'}</p>
+                    <p style="margin: 4px 0; color: #334155; font-size: 14px;"><strong>Client Email:</strong> ${clientInfo.email}</p>
+                    <p style="margin: 4px 0; color: #334155; font-size: 14px;"><strong>Partner Agency:</strong> ${agencyInfo?.name || 'NetVoya Partner'} (${agencyInfo?.email || 'N/A'})</p>
+                    <p style="margin: 4px 0; color: #334155; font-size: 14px;"><strong>Date:</strong> ${new Date().toLocaleString()}</p>
+                </div>
+
+                <h3 style="color: #1e293b; font-size: 16px; margin-bottom: 10px;">Requested eSIM Packages</h3>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
+                    <thead>
+                        <tr style="background-color: #f1f5f9;">
+                            <th style="padding: 10px; text-align: left; color: #475569;">Package</th>
+                            <th style="padding: 10px; text-align: left; color: #475569;">Region</th>
+                            <th style="padding: 10px; text-align: center; color: #475569;">Tokens</th>
+                            <th style="padding: 10px; text-align: right; color: #475569;">Rate</th>
+                            <th style="padding: 10px; text-align: right; color: #475569;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="4" style="padding: 12px 10px; text-align: right; font-weight: bold; border-top: 2px solid #e2e8f0; color: #334155;">Total Tokens:</td>
+                            <td style="padding: 12px 10px; text-align: right; font-weight: bold; border-top: 2px solid #e2e8f0; color: #334155;">${totalTokens}</td>
+                        </tr>
+                        <tr>
+                            <td colspan="4" style="padding: 8px 10px; text-align: right; font-weight: bold; color: #334155;">Total Amount:</td>
+                            <td style="padding: 8px 10px; text-align: right; font-weight: bold; color: #0EA5E9; font-size: 18px;">$${totalAmount.toFixed(2)} USD</td>
+                        </tr>
+                        ${discountLabel ? `
+                        <tr>
+                            <td colspan="5" style="padding: 8px 10px; text-align: right; color: #10B981; font-weight: bold;">
+                                🎁 Special Affiliate Discount Applied (${discountLabel})
+                            </td>
+                        </tr>
+                        ` : ''}
+                    </tfoot>
+                </table>
+
+                <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 15px; border-radius: 8px; text-align: center; margin-top: 20px;">
+                    <p style="margin: 0; color: #1e40af; font-size: 14px; font-weight: 500;">
+                        ⏱️ Request Received & Processing
+                    </p>
+                    <p style="margin: 5px 0 0 0; color: #3b82f6; font-size: 13px;">
+                        Our team is preparing your requested eSIM tokens. Your QR codes and activation profiles will be delivered to your email shortly.
+                    </p>
+                </div>
+
+                <div style="text-align: center; margin-top: 25px; font-size: 12px; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 15px;">
+                    <p>&copy; ${new Date().getFullYear()} NetVoya. All rights reserved.</p>
+                </div>
+            </div>
+        `;
+
+        const info = await transporter.sendMail({
+            from: process.env.EMAIL_FROM || '"NetVoya" <hello@netvoya.com>',
+            to: clientInfo.email,
+            subject: `eSIM Package Request Received - ${totalTokens} Tokens`,
+            text: `Hello ${clientInfo.name || 'Customer'}, we received your request for ${totalTokens} eSIM tokens ($${totalAmount.toFixed(2)} USD) via ${agencyInfo?.name || 'Partner Agency'}. Our team is processing your request.`,
+            html: htmlContent,
+        });
+
+        console.log("✅ Client confirmation email sent: %s", info.messageId);
+        return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+        console.error("❌ Error sending client confirmation email:", error);
+        return { success: false, error: formatEmailError(error) };
+    }
+};
+
+export const sendAdminClientRequestEmail = async (details: ClientRequestDetails) => {
+    try {
+        const { totalTokens, totalAmount, discountLabel, packages, clientInfo, agencyInfo } = details;
+        const targetEmail = process.env.ADMIN_EMAIL || 'hello@netvoya.com';
+        console.log(`📧 Sending admin notification for client request to ${targetEmail}...`);
+
+        const rows = packages.map(pkg => `
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${pkg.name}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${pkg.region}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center; font-weight: bold;">${pkg.quantity}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${pkg.price.toFixed(2)}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right; font-weight: bold;">$${pkg.total.toFixed(2)}</td>
+            </tr>
+        `).join('');
+
+        const htmlContent = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #F97316; margin-top: 0;">🚀 New B2C Client Request (Affiliate Link)</h2>
+                
+                <div style="background-color: #fff7ed; border: 1px solid #ffedd5; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <p style="margin: 5px 0; font-size: 14px;"><strong>Client Name:</strong> ${clientInfo.name || 'Client'}</p>
+                    <p style="margin: 5px 0; font-size: 14px;"><strong>Client Email:</strong> ${clientInfo.email}</p>
+                    <p style="margin: 5px 0; font-size: 14px;"><strong>Client Phone:</strong> ${clientInfo.phone || 'N/A'}</p>
+                    <p style="margin: 5px 0; font-size: 14px;"><strong>Referred Agency:</strong> ${agencyInfo?.name || 'Direct Partner'} (${agencyInfo?.email || 'N/A'})</p>
+                    <p style="margin: 5px 0; font-size: 14px;"><strong>Date:</strong> ${new Date().toLocaleString()}</p>
+                </div>
+
+                <h3 style="margin-bottom: 10px; font-size: 15px;">Requested Items</h3>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
+                    <thead>
+                        <tr style="background-color: #f5f5f5;">
+                            <th style="padding: 8px; text-align: left;">Package</th>
+                            <th style="padding: 8px; text-align: left;">Region</th>
+                            <th style="padding: 8px; text-align: center;">Qty</th>
+                            <th style="padding: 8px; text-align: right;">Rate</th>
+                            <th style="padding: 8px; text-align: right;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="4" style="padding: 10px; text-align: right; font-weight: bold; border-top: 2px solid #ddd;">Total Tokens:</td>
+                            <td style="padding: 10px; text-align: right; font-weight: bold; border-top: 2px solid #ddd;">${totalTokens}</td>
+                        </tr>
+                        <tr>
+                            <td colspan="4" style="padding: 8px; text-align: right; font-weight: bold;">Total Amount:</td>
+                            <td style="padding: 8px; text-align: right; font-weight: bold; color: #F97316; font-size: 16px;">$${totalAmount.toFixed(2)} USD</td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px; border-radius: 6px; text-align: center;">
+                    <p style="margin: 0; color: #166534; font-size: 13px; font-weight: bold;">
+                        ⚡ Action Required: Issue/Fulfill Tokens in Admin Dashboard
+                    </p>
+                </div>
+            </div>
+        `;
+
+        const info = await transporter.sendMail({
+            from: process.env.EMAIL_FROM || '"NetVoya System" <hello@netvoya.com>',
+            to: targetEmail,
+            subject: `🚀 New B2C Client Request - ${totalTokens} Tokens ($${totalAmount.toFixed(2)})`,
+            text: `New B2C Client Request: ${clientInfo.name} (${clientInfo.email}) via Agency ${agencyInfo?.name}. Total Tokens: ${totalTokens}, Total: $${totalAmount.toFixed(2)}.`,
+            html: htmlContent,
+        });
+
+        console.log("✅ Admin notification email sent: %s", info.messageId);
+        return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+        console.error("❌ Error sending admin client request email:", error);
+        return { success: false, error: formatEmailError(error) };
+    }
+};
+
 export default { 
     sendInventoryRequestEmail, 
     sendEsimAssignmentEmail,
     sendLowDataAlertEmail,
-    sendLowBalanceAlertEmail
+    sendLowBalanceAlertEmail,
+    sendClientConfirmationEmail,
+    sendAdminClientRequestEmail
 };

@@ -284,7 +284,7 @@ app.get('/api/health', async (req: Request, res: Response) => {
 app.post('/api/register', async (req: Request, res: Response) => {
     try {
         await ensureDbConnected();
-        const { username, email, password, firstName, lastName, phone, companyName, address1, city, zip, state, country, vatId } = req.body;
+        const { username, email, password, firstName, lastName, phone, companyName, address1, city, zip, state, country, vatId, role, referredByAgency } = req.body;
 
         // Basic Validation
         if (!username || !email || !password) {
@@ -303,6 +303,9 @@ app.post('/api/register', async (req: Request, res: Response) => {
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
+        // Determine user role (partner, client, admin)
+        const userRole = (role === 'client' || role === 'admin') ? role : 'partner';
+
         // Create new user
         const newUser = new User({
             username,
@@ -317,12 +320,13 @@ app.post('/api/register', async (req: Request, res: Response) => {
             zip,
             country,
             vatId,
-            role: 'partner'
+            role: userRole,
+            referredByAgency: referredByAgency || undefined
         });
 
         await newUser.save();
 
-        console.log(`👤 New User Registered: ${email}`);
+        console.log(`👤 New User Registered (${userRole}): ${email}`);
 
         // Generate Token
         // Fixed: Use newUser properties directly
@@ -1447,6 +1451,104 @@ app.post('/api/request-inventory', async (req: Request, res: Response) => {
 
     } catch (error: any) {
         console.error('Request Inventory Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 16.5 Client Request Inventory (Affiliate B2C Request)
+app.post('/api/client-request-inventory', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const { totalTokens, totalAmount, discountLabel, packages, clientInfo, agencyInfo } = req.body;
+
+        if (!totalTokens || !packages || packages.length === 0 || !clientInfo?.email) {
+            return res.status(400).json({ success: false, message: 'Invalid request data. Email, tokens and packages are required.' });
+        }
+
+        console.log(`📝 Received B2C Client request from ${clientInfo.email} for ${totalTokens} tokens ($${totalAmount}) via Agency: ${agencyInfo?.name || 'Direct'}`);
+
+        // Resolve agency user if agency email or ID is provided
+        let partnerId = null;
+        if (agencyInfo?.email) {
+            const agencyUser = await User.findOne({ email: agencyInfo.email });
+            if (agencyUser) partnerId = agencyUser._id;
+        } else if (agencyInfo?.id && mongoose.Types.ObjectId.isValid(agencyInfo.id)) {
+            partnerId = agencyInfo.id;
+        }
+
+        // Calculate secure costs and profits based on current EsimProductMapping
+        let calculatedTotalCost = 0;
+        let calculatedTotalProfit = 0;
+
+        const enrichedPackages = await Promise.all(packages.map(async (pkg: any) => {
+            const mapping = await EsimProductMapping.findOne({ name: pkg.name, region: pkg.region });
+            const wholesaleCost = mapping ? mapping.wholesale_cost : 0;
+            const packageTotalCost = wholesaleCost * pkg.quantity;
+            const packageProfit = pkg.total - packageTotalCost;
+
+            calculatedTotalCost += packageTotalCost;
+            calculatedTotalProfit += packageProfit;
+
+            return {
+                ...pkg,
+                cost: wholesaleCost,
+                totalCost: packageTotalCost,
+                profit: packageProfit
+            };
+        }));
+
+        // Persist Order to database marked as B2C client request
+        const order = await Order.create({
+            partner_id: partnerId,
+            partner_name: agencyInfo?.name || 'Affiliate Partner',
+            partner_email: agencyInfo?.email || 'unknown',
+            isClientRequest: true,
+            client_name: clientInfo?.name || 'Client',
+            client_email: clientInfo.email,
+            agency_id: agencyInfo?.id || '',
+            agency_name: agencyInfo?.name || '',
+            totalTokens,
+            totalCost: calculatedTotalCost,
+            totalAmount,
+            totalProfit: calculatedTotalProfit,
+            discountLabel: discountLabel || 'Affiliate Client Discount',
+            packages: enrichedPackages,
+            status: 'Pending'
+        });
+
+        console.log(`✅ Client Order ${order._id} saved to database`);
+
+        // Send Email Notifications
+        // 1. Client Confirmation Email
+        const clientEmailResult = await emailService.sendClientConfirmationEmail({
+            totalTokens,
+            totalAmount,
+            discountLabel,
+            packages,
+            clientInfo,
+            agencyInfo
+        });
+
+        // 2. Admin Notification Email
+        const adminEmailResult = await emailService.sendAdminClientRequestEmail({
+            totalTokens,
+            totalAmount,
+            discountLabel,
+            packages,
+            clientInfo,
+            agencyInfo
+        });
+
+        res.json({
+            success: true,
+            message: 'Request submitted successfully. Confirmation emails sent to client and admin.',
+            orderId: order._id,
+            clientEmailSent: clientEmailResult.success,
+            adminEmailSent: adminEmailResult.success
+        });
+
+    } catch (error: any) {
+        console.error('Client Request Inventory Error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
