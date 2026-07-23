@@ -1829,16 +1829,77 @@ app.get('/api/partner/settings', async (req: Request, res: Response) => {
             maskedKey = key.substring(0, 12) + '...' + key.substring(key.length - 4);
         }
 
+        // Auto-generate an affiliateCode for the partner if they don't have one yet
+        if (!user.affiliateCode) {
+            const raw = crypto.randomBytes(6).toString('hex'); // 12 hex chars
+            user.affiliateCode = `nvref_${raw}`;
+            await user.save();
+        }
+
         res.json({
             success: true,
             settings: {
                 apiKey: maskedKey,
                 hasApiKey: !!user.apiKey,
-                webhookUrl: user.webhookUrl || ''
+                webhookUrl: user.webhookUrl || '',
+                affiliateCode: user.affiliateCode,
+                agencyName: user.companyName || user.username
             }
         });
     } catch (error: any) {
         res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 20b. Regenerate Affiliate Code for Partner
+app.post('/api/partner/affiliate/generate', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const { partner_id } = req.body;
+        if (!partner_id) return res.status(400).json({ success: false, message: 'partner_id required' });
+
+        const user = await User.findById(partner_id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+        if (user.role !== 'partner' && user.role !== 'admin') {
+            return res.status(403).json({ success: false, message: 'Only partners can generate affiliate codes' });
+        }
+
+        const raw = crypto.randomBytes(6).toString('hex');
+        user.affiliateCode = `nvref_${raw}`;
+        await user.save();
+
+        console.log(`🔗 Affiliate code regenerated for partner: ${user.email} → ${user.affiliateCode}`);
+
+        res.json({
+            success: true,
+            affiliateCode: user.affiliateCode,
+            message: 'New affiliate code generated successfully.'
+        });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 20c. Public: Validate an affiliate code (used by client portal on load)
+app.get('/api/validate-affiliate/:code', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const { code } = req.params;
+        if (!code) return res.status(400).json({ success: false, valid: false });
+
+        const partner = await User.findOne({ affiliateCode: code, role: 'partner' });
+        if (!partner) {
+            return res.status(404).json({ success: false, valid: false, message: 'Invalid or expired affiliate link.' });
+        }
+
+        res.json({
+            success: true,
+            valid: true,
+            agencyName: partner.companyName || partner.username,
+            agencyId: partner._id
+        });
+    } catch (error: any) {
+        res.status(500).json({ success: false, valid: false, message: error.message });
     }
 });
 
