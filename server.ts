@@ -1093,7 +1093,7 @@ app.get('/api/partner/activations', async (req: Request, res: Response) => {
                     const vendorData = await esimVendorService.getEsimDetailsByIccid(profile.iccid);
                     
                     // Convert to plain object so we can attach usage data
-                    const profileObj = profile.toObject();
+                    const profileObj = profile.toObject() as any;
 
                     if (vendorData && vendorData.status) {
                         let newStatus = vendorData.status === 'Active' ? 'Active' : 'Assigned';

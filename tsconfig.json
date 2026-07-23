@@ -11,7 +11,9 @@
         "resolveJsonModule": true
     },
     "include": [
-        "**/*.ts"
+        "server.ts",
+        "models/**/*.ts",
+        "services/**/*.ts"
     ],
     "exclude": [
         "node_modules"
