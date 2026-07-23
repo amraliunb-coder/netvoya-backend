@@ -452,7 +452,24 @@ app.get('/api/packages', async (req: Request, res: Response) => {
     }
 });
 
-// 6. Fetch Vendor Balance
+// 5b. Public Client Portal Packages - returns ALL packages (no is_live filter)
+// Used exclusively by the affiliate client portal so clients see every country
+app.get('/api/client-packages', async (_req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const packages = await EsimProductMapping.find({}).sort({ region: 1, data_limit_gb: 1 });
+        res.json({
+            success: true,
+            count: packages.length,
+            packages
+        });
+    } catch (error: any) {
+        console.error('Error fetching client packages:', error.message);
+        res.status(500).json({ success: false, message: 'Error fetching packages' });
+    }
+});
+
+
 app.get('/api/vendor/balance', async (_req: Request, res: Response) => {
     try {
         const balance = await esimVendorService.getBalance();
