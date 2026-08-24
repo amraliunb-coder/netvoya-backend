@@ -105,7 +105,7 @@ const connectDB = async () => {
         console.log(`📡 Attempting to connect to: ${maskedURI}`);
 
         await mongoose.connect(MONGO_URI, {
-            // Simplified options for better stability
+            dbName: 'netvoya',
             serverSelectionTimeoutMS: 5000,
             retryWrites: true,
             w: 'majority'
@@ -200,27 +200,16 @@ app.use((req: Request, res: Response, next: NextFunction) => {
  * Critical for Vercel serverless where connections can become stale.
  */
 const ensureDbConnected = async (): Promise<void> => {
-    const state = mongoose.connection.readyState;
-    // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
-    if (state === 0 || state === 3) {
-        console.log('🔄 MongoDB disconnected. Reconnecting...');
-        await connectDB();
-    } else if (state === 2) {
-        // Currently connecting, wait for it
-        console.log('⏳ MongoDB is connecting, waiting...');
-        await new Promise<void>((resolve) => {
-            const checkConnection = setInterval(() => {
-                if (mongoose.connection.readyState === 1) {
-                    clearInterval(checkConnection);
-                    resolve();
-                }
-            }, 100);
-            // Timeout after 5 seconds
-            setTimeout(() => {
-                clearInterval(checkConnection);
-                resolve();
-            }, 5000);
-        });
+    if (mongoose.connection.readyState === 1) return;
+    try {
+        await mongoose.connect(MONGO_URI, {
+            dbName: 'netvoya',
+            serverSelectionTimeoutMS: 5000,
+            retryWrites: true,
+            w: 'majority'
+        } as any);
+    } catch (err: any) {
+        console.error('ensureDbConnected error:', err.message);
     }
 };
 
