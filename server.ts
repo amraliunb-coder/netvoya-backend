@@ -277,6 +277,10 @@ app.post('/api/register', async (req: Request, res: Response) => {
         // Determine user role (partner, client, admin)
         const userRole = (role === 'client' || role === 'admin') ? role : 'partner';
 
+        // Determine affiliate code & API key for partner
+        const affiliateCode = req.body.affiliateCode || `nvref_${crypto.randomBytes(6).toString('hex')}`;
+        const apiKey = `nv_live_${crypto.randomBytes(16).toString('hex')}`;
+
         // Create new user
         const newUser = new User({
             username,
@@ -292,6 +296,8 @@ app.post('/api/register', async (req: Request, res: Response) => {
             country,
             vatId,
             role: userRole,
+            affiliateCode,
+            apiKey,
             referredByAgency: referredByAgency || undefined
         });
 
@@ -300,20 +306,23 @@ app.post('/api/register', async (req: Request, res: Response) => {
         console.log(`👤 New User Registered (${userRole}): ${email}`);
 
         // Generate Token
-        // Fixed: Use newUser properties directly
         const token = jwt.sign(
             { id: newUser._id, email: newUser.email, role: newUser.role },
             JWT_SECRET,
             { expiresIn: '24h' }
         );
 
-        // Create Welcome Notification
-        await Notification.create({
-            userId: newUser._id,
-            title: 'Welcome to Netvoya!',
-            message: `Hi ${firstName || username}, we're thrilled to have you as a partner! Explore your dashboard to manage eSIMs, view inventory, and integrate our API into your own application.`,
-            type: 'info'
-        });
+        // Safe Welcome Notification Creation
+        try {
+            await Notification.create({
+                userId: newUser._id,
+                title: 'Welcome to Netvoya!',
+                message: `Hi ${firstName || username}, we're thrilled to have you as a partner!`,
+                type: 'info'
+            });
+        } catch (notifErr: any) {
+            console.warn('⚠️ Welcome notification creation skipped:', notifErr.message);
+        }
 
         // Send Response
         return res.status(201).json({
