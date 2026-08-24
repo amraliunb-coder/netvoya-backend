@@ -87,52 +87,42 @@ import esimVendorService from './services/esimVendorService.js';
 import emailService from './services/emailService.js';
 import alertService from './services/alertService.js';
 
-// Prioritize the MongoDB integration's variable, fallback to manual MONGO_URI
-const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || '';
+const URIS_TO_TRY = Array.from(new Set([
+    process.env.MONGO_URI,
+    process.env.MONGODB_URI
+].filter(Boolean))) as string[];
 
-if (!MONGO_URI) {
-    console.warn("⚠️  WARNING: MONGO_URI is not defined in .env file.");
-    console.warn("    Server will run but database connection will fail.");
+if (URIS_TO_TRY.length === 0) {
+    console.warn("⚠️  WARNING: MONGO_URI is not defined in environment.");
 }
 
 // Global variable to store connection error
 let mongoConnectionError: string | null = null;
 
 const connectDB = async () => {
-    try {
-        // Log masked URI to verify it's loaded correctly
-        const maskedURI = MONGO_URI.replace(/:([^:@]+)@/, ':****@');
-        console.log(`📡 Attempting to connect to: ${maskedURI}`);
+    let lastErr: string | null = null;
+    for (const uri of URIS_TO_TRY) {
+        try {
+            const maskedURI = uri.replace(/:([^:@]+)@/, ':****@');
+            console.log(`📡 Attempting to connect to: ${maskedURI}`);
 
-        await mongoose.connect(MONGO_URI, {
-            dbName: 'netvoya',
-            serverSelectionTimeoutMS: 5000,
-            retryWrites: true,
-            w: 'majority'
-        } as any);
+            await mongoose.connect(uri, {
+                dbName: 'netvoya',
+                serverSelectionTimeoutMS: 4000,
+                retryWrites: true,
+                w: 'majority'
+            } as any);
 
-        mongoose.connection.on('connected', () => {
-            console.log('✅ MongoDB Connected - Pool Ready');
-        });
-
-        mongoose.connection.on('error', (err) => {
-            console.error('❌ MongoDB Error:', err);
-        });
-
-        mongoose.connection.on('disconnected', () => {
-            console.warn('⚠️ MongoDB Disconnected - Attempting Reconnection...');
-        });
-
-        console.log('✅ Connected to MongoDB Atlas');
-        mongoConnectionError = null; // Clear error on success
-    } catch (err: any) {
-        console.error('❌ MongoDB Connection Error:', err.message);
-        mongoConnectionError = err.message; // Store error
-
-        if (err.message && (err.message.includes('ReplicaSetNoPrimary') || err.message.includes('MongooseServerSelectionError'))) {
-            // ... (keep existing hints)
+            console.log('✅ Connected to MongoDB Atlas');
+            mongoConnectionError = null; // Clear error on success
+            return;
+        } catch (err: any) {
+            console.error(`❌ Connection failed for URI (${uri.substring(0, 25)}...):`, err.message);
+            lastErr = err.message;
         }
     }
+    mongoConnectionError = lastErr;
+};
 };
 
 // Connect to Database
@@ -201,16 +191,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
  */
 const ensureDbConnected = async (): Promise<void> => {
     if (mongoose.connection.readyState === 1) return;
-    try {
-        await mongoose.connect(MONGO_URI, {
-            dbName: 'netvoya',
-            serverSelectionTimeoutMS: 5000,
-            retryWrites: true,
-            w: 'majority'
-        } as any);
-    } catch (err: any) {
-        console.error('ensureDbConnected error:', err.message);
-    }
+    await connectDB();
 };
 
 /**
