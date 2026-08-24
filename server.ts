@@ -360,9 +360,9 @@ app.post('/api/register', async (req: Request, res: Response) => {
             token
         });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Registration Error:', error);
-        return res.status(500).json({ success: false, message: 'Internal server error' });
+        return res.status(500).json({ success: false, message: error?.message || 'Internal server error' });
     }
 });
 
@@ -416,9 +416,9 @@ app.post('/api/login', async (req: Request, res: Response) => {
             token
         });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Login Error:', error);
-        return res.status(500).json({ success: false, message: 'Internal server error' });
+        return res.status(500).json({ success: false, message: error?.message || 'Internal server error' });
     }
 });
 
