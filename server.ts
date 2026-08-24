@@ -740,6 +740,61 @@ app.get('/api/admin/reset-demo', async (_req: Request, res: Response) => {
     }
 });
 
+// Admin: Seed Partner Bianca
+app.get('/api/admin/seed-bianca', async (_req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        const partnerEmail = 'bianca@wanderwell.club';
+        const rawPassword = 'Wanderwell#2026!eSIM';
+        const companyName = 'Wanderwell';
+        const username = 'bianca';
+        const affiliateCode = 'nvref_wanderwell';
+
+        let user = await User.findOne({ email: partnerEmail });
+        const hashedPassword = bcrypt.hashSync(rawPassword, 10);
+        const apiKey = `nv_live_wanderwell_${crypto.randomBytes(16).toString('hex')}`;
+
+        if (user) {
+            user.password = hashedPassword;
+            user.companyName = companyName;
+            user.username = username;
+            user.role = 'partner';
+            user.affiliateCode = affiliateCode;
+            if (!user.apiKey) user.apiKey = apiKey;
+            await user.save();
+        } else {
+            user = new User({
+                username,
+                email: partnerEmail,
+                password: hashedPassword,
+                companyName,
+                firstName: 'Bianca',
+                role: 'partner',
+                affiliateCode,
+                apiKey
+            });
+            await user.save();
+        }
+
+        res.json({
+            success: true,
+            message: 'Partner Bianca seeded successfully',
+            partner: {
+                id: user._id,
+                email: user.email,
+                username: user.username,
+                companyName: user.companyName,
+                role: user.role,
+                affiliateCode: user.affiliateCode,
+                affiliateLink: `https://netvoya.com/?ref=${user.affiliateCode}`,
+                apiKey: user.apiKey
+            }
+        });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // 11.5.1 Admin: Verify ICCID
 app.get('/api/admin/verify-iccid/:iccid', async (req: Request, res: Response) => {
     try {
