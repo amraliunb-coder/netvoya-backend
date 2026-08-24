@@ -2223,7 +2223,8 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     console.error('Server error:', err);
     res.status(500).json({
         success: false,
-        message: 'Internal server error'
+        message: err.message || 'Internal server error',
+        stack: err.stack
     });
 });
 
