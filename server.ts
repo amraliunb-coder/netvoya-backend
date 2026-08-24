@@ -6,7 +6,8 @@
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import bcrypt from 'bcryptjs';
+import bcryptjs from 'bcryptjs';
+const bcrypt = (bcryptjs as any).default || bcryptjs;
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 
@@ -1484,14 +1485,22 @@ app.post('/api/client-request-inventory', async (req: Request, res: Response) =>
 
         console.log(`📝 Received B2C Client request from ${clientInfo.email} for ${totalTokens} tokens ($${totalAmount}) via Agency: ${agencyInfo?.name || 'Direct'}`);
 
-        // Resolve agency user if agency email or ID is provided
-        let partnerId = null;
-        if (agencyInfo?.email) {
-            const agencyUser = await User.findOne({ email: agencyInfo.email });
-            if (agencyUser) partnerId = agencyUser._id;
-        } else if (agencyInfo?.id && mongoose.Types.ObjectId.isValid(agencyInfo.id)) {
-            partnerId = agencyInfo.id;
+        // Resolve partner agency user by ID, affiliateCode, or email
+        let partnerUser = null;
+        if (agencyInfo?.id && mongoose.Types.ObjectId.isValid(agencyInfo.id)) {
+            partnerUser = await User.findById(agencyInfo.id);
         }
+        if (!partnerUser && (agencyInfo?.code || agencyInfo?.id)) {
+            const refCode = agencyInfo.code || agencyInfo.id;
+            partnerUser = await User.findOne({ affiliateCode: refCode });
+        }
+        if (!partnerUser && agencyInfo?.email && !agencyInfo.email.includes('@netvoya.partner')) {
+            partnerUser = await User.findOne({ email: agencyInfo.email });
+        }
+
+        const partnerId = partnerUser ? partnerUser._id : null;
+        const resolvedAgencyName = partnerUser ? (partnerUser.companyName || partnerUser.username) : (agencyInfo?.name || 'Affiliate Partner');
+        const resolvedAgencyEmail = partnerUser ? partnerUser.email : (agencyInfo?.email || 'unknown');
 
         // Calculate secure costs and profits based on current EsimProductMapping
         let calculatedTotalCost = 0;
@@ -1517,13 +1526,13 @@ app.post('/api/client-request-inventory', async (req: Request, res: Response) =>
         // Persist Order to database marked as B2C client request
         const order = await Order.create({
             partner_id: partnerId,
-            partner_name: agencyInfo?.name || 'Affiliate Partner',
-            partner_email: agencyInfo?.email || 'unknown',
+            partner_name: resolvedAgencyName,
+            partner_email: resolvedAgencyEmail,
             isClientRequest: true,
             client_name: clientInfo?.name || 'Client',
             client_email: clientInfo.email,
-            agency_id: agencyInfo?.id || '',
-            agency_name: agencyInfo?.name || '',
+            agency_id: partnerUser ? partnerUser._id.toString() : (agencyInfo?.id || ''),
+            agency_name: resolvedAgencyName,
             totalTokens,
             totalCost: calculatedTotalCost,
             totalAmount,

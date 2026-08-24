@@ -34,7 +34,7 @@ const UserSchema: Schema = new Schema({
     country: { type: String },
     vatId: { type: String },
     role: { type: String, enum: ['partner', 'admin', 'client'], default: 'partner' },
-    affiliateCode: { type: String },
+    affiliateCode: { type: String, index: true, sparse: true },
     referredByAgency: { type: String },
     apiKey: { type: String },
     webhookUrl: { type: String },

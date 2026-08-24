@@ -64,4 +64,7 @@ const OrderSchema = new Schema({
     timestamps: true
 });
 
+OrderSchema.index({ partner_id: 1, createdAt: -1 });
+OrderSchema.index({ isClientRequest: 1, createdAt: -1 });
+
 export default mongoose.model<IOrder>('Order', OrderSchema);
