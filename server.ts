@@ -9,6 +9,7 @@ import cors from 'cors';
 import bcryptjs from 'bcryptjs';
 const bcrypt = (bcryptjs as any).default || bcryptjs;
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 
 // Load environment variables
