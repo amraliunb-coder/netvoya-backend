@@ -741,7 +741,7 @@ app.get('/api/admin/reset-demo', async (_req: Request, res: Response) => {
 });
 
 // Admin: Seed Partner Bianca
-app.get('/api/admin/seed-bianca', async (_req: Request, res: Response) => {
+app.get(['/api/admin/seed-bianca', '/admin/seed-bianca', '/api/seed-bianca', '/seed-bianca'], async (_req: Request, res: Response) => {
     try {
         await ensureDbConnected();
         const partnerEmail = 'bianca@wanderwell.club';
