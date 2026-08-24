@@ -272,7 +272,7 @@ app.post('/api/register', async (req: Request, res: Response) => {
         }
 
         // Hash password
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword = bcrypt.hashSync(password, 10);
 
         // Determine user role (partner, client, admin)
         const userRole = (role === 'client' || role === 'admin') ? role : 'partner';
@@ -356,7 +356,7 @@ app.post('/api/login', async (req: Request, res: Response) => {
         }
 
         // Verify password
-        const isMatch = await bcrypt.compare(password, user.password || '');
+        const isMatch = bcrypt.compareSync(password, user.password || '');
 
         if (!isMatch) {
             return res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -2009,14 +2009,13 @@ app.patch('/api/user/change-password', async (req: Request, res: Response) => {
         }
 
         // Verify current password
-        const isMatch = await bcrypt.compare(currentPassword, user.password || '');
+        const isMatch = bcrypt.compareSync(currentPassword, user.password || '');
         if (!isMatch) {
             return res.status(401).json({ success: false, message: 'Incorrect current password' });
         }
 
         // Hash and save new password
-        const salt = await bcrypt.genSalt(10);
-        user.password = await bcrypt.hash(newPassword, salt);
+        user.password = bcrypt.hashSync(newPassword, 10);
         user.requiresPasswordChange = false;
         await user.save();
 
