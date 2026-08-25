@@ -2265,6 +2265,133 @@ app.get('/api/vendor/network-coverages', async (_req: Request, res: Response) =>
     }
 });
 
+// =============================================================================
+// TEMPORARY: DATA MIGRATION FROM OLD DATABASE
+// =============================================================================
+app.post('/api/admin/migrate-old-db', async (req: Request, res: Response) => {
+    try {
+        await ensureDbConnected();
+        
+        const OLD_MONGO_URI = 'mongodb+srv://AMR:Bonkai30!!!@cluster0.fxdecqe.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+        
+        console.log('🔄 Starting migration from old database...');
+        
+        // Create a separate connection to the old DB
+        const oldConn = await mongoose.createConnection(OLD_MONGO_URI, {
+            serverSelectionTimeoutMS: 15000
+        }).asPromise();
+        
+        console.log('✅ Connected to old database');
+        const oldDb = oldConn.db;
+        
+        // 1. Get all users from old DB
+        const oldUsers = await oldDb.collection('users').find({}).toArray();
+        console.log(`📋 Old DB users: ${oldUsers.length}`);
+        
+        // 2. Get all collections data
+        const oldBuckets = await oldDb.collection('inventory_buckets').find({}).toArray();
+        const oldProfiles = await oldDb.collection('esim_profiles').find({}).toArray();
+        const oldOrders = await oldDb.collection('orders').find({}).toArray();
+        const oldNotifications = await oldDb.collection('notifications').find({}).toArray();
+        const oldMappings = await oldDb.collection('esim_product_mappings').find({}).toArray();
+        
+        console.log(`📦 Old DB: ${oldBuckets.length} buckets, ${oldProfiles.length} profiles, ${oldOrders.length} orders, ${oldMappings.length} mappings`);
+        
+        // Close old connection
+        await oldConn.close();
+        console.log('✅ Old DB connection closed');
+        
+        // 3. Import into current DB — skip duplicates
+        const currentDb = mongoose.connection.db;
+        let stats = { users: 0, buckets: 0, profiles: 0, orders: 0, notifications: 0, mappings: 0, skipped: 0 };
+        
+        // Import users (skip if email already exists)
+        for (const user of oldUsers) {
+            const exists = await currentDb.collection('users').findOne({ email: user.email });
+            if (!exists) {
+                await currentDb.collection('users').insertOne(user);
+                stats.users++;
+                console.log(`  ✅ User imported: ${user.username} (${user.email}) [${user.role}]`);
+            } else {
+                stats.skipped++;
+                console.log(`  ⏭️ User skipped (exists): ${user.email}`);
+            }
+        }
+        
+        // Import product mappings (skip if vendor_package_id already exists)
+        for (const mapping of oldMappings) {
+            const exists = await currentDb.collection('esim_product_mappings').findOne({ vendor_package_id: mapping.vendor_package_id });
+            if (!exists) {
+                await currentDb.collection('esim_product_mappings').insertOne(mapping);
+                stats.mappings++;
+            } else {
+                stats.skipped++;
+            }
+        }
+        console.log(`  ✅ Mappings imported: ${stats.mappings}`);
+        
+        // Import inventory buckets (skip if _id already exists)
+        for (const bucket of oldBuckets) {
+            const exists = await currentDb.collection('inventory_buckets').findOne({ _id: bucket._id });
+            if (!exists) {
+                await currentDb.collection('inventory_buckets').insertOne(bucket);
+                stats.buckets++;
+            } else {
+                stats.skipped++;
+            }
+        }
+        console.log(`  ✅ Buckets imported: ${stats.buckets}`);
+        
+        // Import eSIM profiles (skip if iccid already exists)
+        for (const profile of oldProfiles) {
+            const exists = await currentDb.collection('esim_profiles').findOne({ iccid: profile.iccid });
+            if (!exists) {
+                await currentDb.collection('esim_profiles').insertOne(profile);
+                stats.profiles++;
+            } else {
+                stats.skipped++;
+            }
+        }
+        console.log(`  ✅ Profiles imported: ${stats.profiles}`);
+        
+        // Import orders (skip if _id already exists)
+        for (const order of oldOrders) {
+            const exists = await currentDb.collection('orders').findOne({ _id: order._id });
+            if (!exists) {
+                await currentDb.collection('orders').insertOne(order);
+                stats.orders++;
+            } else {
+                stats.skipped++;
+            }
+        }
+        console.log(`  ✅ Orders imported: ${stats.orders}`);
+        
+        // Import notifications (skip if _id already exists)  
+        for (const notif of oldNotifications) {
+            const exists = await currentDb.collection('notifications').findOne({ _id: notif._id });
+            if (!exists) {
+                await currentDb.collection('notifications').insertOne(notif);
+                stats.notifications++;
+            } else {
+                stats.skipped++;
+            }
+        }
+        console.log(`  ✅ Notifications imported: ${stats.notifications}`);
+        
+        console.log('🎉 Migration complete!', stats);
+        
+        res.json({
+            success: true,
+            message: 'Migration completed successfully',
+            stats
+        });
+        
+    } catch (error: any) {
+        console.error('❌ Migration Error:', error.message);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // 404 handler
 app.use((_req: Request, res: Response) => {
     res.status(404).json({
